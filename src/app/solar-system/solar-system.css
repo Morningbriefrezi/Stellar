@@ -832,6 +832,15 @@
   background: rgba(8, 20, 24, 0.9);
 }
 
+/* On phones the drag hint sits directly above the dock, so the button
+   stacks above the hint instead of landing on top of its text. The hint
+   wraps to two or three lines in Georgian, hence the generous clearance. */
+@media (max-width: 680px) {
+  .flight-hud__explore {
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 132px);
+  }
+}
+
 .flight-hud__exit {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
