@@ -1133,6 +1133,9 @@
       "hull": "Hull",
       "hint": "W A S D · mouse · Space fire · Shift boost · Q E roll · 1 2 3 speed · H jump · F S-foils · V eject / board · C view · Esc exit",
       "view": "View",
+      "camera": "Camera",
+      "camIn": "Camera closer",
+      "camOut": "Camera farther",
       "commsHeader": "Incoming transmission · {from}",
       "comms": {
         "centauriPrime": {

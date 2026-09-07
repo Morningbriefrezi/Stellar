@@ -136,7 +136,7 @@ export function makeNearbyStars(lite: boolean): NearbyStarsHandle {
     // Apparent brightness — brighter (lower mag) gets a larger sprite. Kept
     // small: a star is a point with a halo, not a fog ball.
     const apparent = THREE.MathUtils.clamp(1.8 - star.mag * 0.6, 0.4, 3.0);
-    spr.scale.setScalar(12 + apparent * 5);
+    spr.scale.setScalar(6 + apparent * 2.6);
     group.add(spr);
     namedMats.push(mat);
 

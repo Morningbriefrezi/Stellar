@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Rocket, X } from 'lucide-react';
+import { Rocket, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   attachDesktopControls,
   clearFlightInput,
+  zoomFlightCamera,
   type FlightAlert,
   type FlightSession,
   type ShipKind,
@@ -682,6 +683,25 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
               <span className="flight-hud__stat">
                 {t('kills')} <span ref={killsRef}>0</span>
               </span>
+            </div>
+            <div className="flight-hud__cam" role="group" aria-label={t('camera')}>
+              <button
+                type="button"
+                className="flight-hud__cam-btn"
+                onClick={() => zoomFlightCamera(session.input, -1)}
+                aria-label={t('camIn')}
+              >
+                <ZoomIn size={14} strokeWidth={2.2} aria-hidden />
+              </button>
+              <span className="flight-hud__cam-label">{t('camera')}</span>
+              <button
+                type="button"
+                className="flight-hud__cam-btn"
+                onClick={() => zoomFlightCamera(session.input, 1)}
+                aria-label={t('camOut')}
+              >
+                <ZoomOut size={14} strokeWidth={2.2} aria-hidden />
+              </button>
             </div>
             <div ref={pilotRef} className="flight-hud__pilot" hidden />
           </div>

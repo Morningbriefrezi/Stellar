@@ -812,11 +812,14 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
   // counter-rotating streamer layers, all breathing on their own phase. ──
   const flareTex = lensFlareSprite();
   const raysTex = coronaRaysTexture();
+  // Kept tight to the disc. A corona that reaches ten radii out is bigger
+  // than the inner planets' orbits at this scale and simply erases whatever
+  // you flew over to look at.
   const CORONA_SPECS = [
-    { tex: flareTex, scale: 3.0, opacity: 0.55, color: 0xffd9a0, spin: 0 },
-    { tex: raysTex, scale: 5.2, opacity: 0.55, color: 0xffc078, spin: 0.025 },
-    { tex: raysTex, scale: 7.4, opacity: 0.32, color: 0xff9a50, spin: -0.014 },
-    { tex: flareTex, scale: 10.5, opacity: 0.16, color: 0xff8040, spin: 0 },
+    { tex: flareTex, scale: 1.7, opacity: 0.5, color: 0xffd9a0, spin: 0 },
+    { tex: raysTex, scale: 2.5, opacity: 0.45, color: 0xffc078, spin: 0.025 },
+    { tex: raysTex, scale: 3.3, opacity: 0.24, color: 0xff9a50, spin: -0.014 },
+    { tex: flareTex, scale: 4.2, opacity: 0.12, color: 0xff8040, spin: 0 },
   ];
   const corona = CORONA_SPECS.map((spec, i) => {
     const mat = new THREE.SpriteMaterial({
@@ -896,7 +899,7 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
     blending: THREE.AdditiveBlending,
   });
   const flare = new THREE.Sprite(flareMat);
-  flare.scale.set(sunRadius * 6, sunRadius * 6, 1);
+  flare.scale.set(sunRadius * 3, sunRadius * 3, 1);
   flare.name = 'sunFlare';
   group.add(flare);
   group.add(promGroup);
@@ -916,7 +919,7 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
       }
       // Flare scales with camera distance so it doesn't get monstrous at zoom-in.
       const dist = cameraPos.distanceTo(sunPos);
-      const flareScale = THREE.MathUtils.clamp(dist * 0.42, sunRadius * 5, sunRadius * 24);
+      const flareScale = THREE.MathUtils.clamp(dist * 0.12, sunRadius * 2.4, sunRadius * 7);
       flare.scale.set(flareScale, flareScale, 1);
 
       let vis = 0;
@@ -925,7 +928,7 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
         toSun.copy(sunPos).sub(cameraPos).divideScalar(dist);
         vis = THREE.MathUtils.smoothstep(camFwd.dot(toSun), 0.72, 0.97);
       }
-      flareMat.opacity = 0.22 + 0.26 * vis;
+      flareMat.opacity = 0.16 + 0.22 * vis;
 
       // Prominences are a close-range detail — from system distance the
       // flat arc planes would read as odd rings, so fade them out beyond

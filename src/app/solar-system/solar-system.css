@@ -1187,6 +1187,38 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
 }
 .flight-hud__pilot[hidden] { display: none; }
 
+/* ── Camera distance: pull the chase view in, push it out ── */
+.flight-hud__cam {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--deck-line);
+}
+.flight-hud__cam-label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--deck-dim);
+}
+.flight-hud__cam-btn {
+  min-height: 0;
+  width: 30px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 1px solid var(--deck-line);
+  background: rgba(248, 244, 236, 0.06);
+  color: rgba(248, 244, 236, 0.85);
+  cursor: pointer;
+}
+.flight-hud__cam-btn::before { content: none; }
+.flight-hud__cam-btn:active { background: rgba(248, 244, 236, 0.2); }
+
 .flight-hud__radar {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
@@ -1468,41 +1500,75 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
 @media (max-width: 680px) {
   /* The deck shrinks to a slim strip: a small dial, two lines of numbers,
      and the status lamps. Everything else is either on a key or implied. */
+  /* On a phone the deck is one shallow strip along the top: speed, what you
+     are near, how high, and the camera keys. The dial, the light-speed
+     fraction, the regime and system rows all live elsewhere on this screen
+     already — a panel repeating them ate a third of the sky. */
   .flight-hud__deck {
-    top: calc(max(10px, env(safe-area-inset-top)) + 54px);
-    width: 124px;
-    padding: 7px;
-    gap: 6px;
-    border-radius: 10px;
+    top: calc(max(10px, env(safe-area-inset-top)) + 48px);
+    flex-direction: row;
+    align-items: center;
+    width: auto;
+    max-width: calc(100vw - 104px);
+    padding: 4px 8px;
+    gap: 8px;
+    border-radius: 8px;
   }
-  .flight-hud__gauge { width: 84px; height: 84px; }
-  .flight-hud__gauge canvas { width: 84px !important; height: 84px !important; }
-  .flight-hud__gauge-read { padding-top: 3px; gap: 0; }
-  .flight-hud__gauge-speed { font-size: 15px; }
-  .flight-hud__gauge-unit { font-size: 7px; letter-spacing: 0.1em; }
-  .flight-hud__gauge-c { margin-top: 2px; font-size: 9px; }
+  .flight-hud__gauge { width: auto; height: auto; align-self: auto; }
+  .flight-hud__gauge canvas { display: none; }
+  .flight-hud__gauge-read {
+    position: static;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 3px;
+    padding-top: 0;
+  }
+  .flight-hud__gauge-speed { font-size: 14px; }
+  .flight-hud__gauge-unit { font-size: 8px; letter-spacing: 0.08em; }
+  .flight-hud__gauge-c { display: none; }
   .flight-hud__readout {
-    column-gap: 6px;
-    row-gap: 2px;
-    padding-top: 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 0 0 0 8px;
+    border-top: none;
+    border-left: 1px solid var(--deck-line);
+    min-width: 0;
   }
   .flight-hud__label { font-size: 8px; letter-spacing: 0.1em; }
-  .flight-hud__value { font-size: 10px; }
-  .flight-hud__status { padding-top: 6px; }
-  .flight-hud__stat { font-size: 8px; gap: 4px; }
-  .flight-hud__pilot { font-size: 8px; padding: 4px 5px; }
-  /* Regime and system live on the pills and the alert line already. */
+  .flight-hud__value { font-size: 10px; max-width: 68px; }
+  .flight-hud__status { display: none; }
+  .flight-hud__pilot {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    white-space: nowrap;
+    font-size: 8px;
+    padding: 4px 6px;
+    background: var(--deck-bg);
+  }
+  /* Regime, system and the two labels the values speak for themselves. */
   .flight-hud__readout > :nth-child(1),
   .flight-hud__readout > :nth-child(2),
+  .flight-hud__readout > :nth-child(3),
+  .flight-hud__readout > :nth-child(5),
   .flight-hud__readout > :nth-child(7),
   .flight-hud__readout > :nth-child(8) { display: none; }
+  .flight-hud__cam {
+    padding: 0 0 0 8px;
+    border-top: none;
+    border-left: 1px solid var(--deck-line);
+    gap: 4px;
+  }
+  .flight-hud__cam-label { display: none; }
+  .flight-hud__cam-btn { width: 26px; height: 24px; }
   .flight-hud__hull {
     left: max(12px, env(safe-area-inset-left));
     right: auto;
     bottom: auto;
-    top: calc(max(10px, env(safe-area-inset-top)) + 250px);
+    top: calc(max(10px, env(safe-area-inset-top)) + 84px);
     transform: none;
-    width: 124px;
+    width: 108px;
     align-items: flex-start;
   }
   .flight-hud__hull-row { align-self: flex-start; }
@@ -1546,7 +1612,7 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
     height: 36px;
     font-size: 9px;
   }
-  .flight-hud__radar { width: 74px !important; height: 74px !important; }
+  .flight-hud__radar { width: 60px !important; height: 60px !important; }
   .flight-hud__comms {
     right: max(12px, env(safe-area-inset-right));
     left: max(12px, env(safe-area-inset-left));

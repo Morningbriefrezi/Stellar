@@ -92,7 +92,9 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
   owned.push(matB);
   const bLocal = new THREE.Vector3(1.15, 0.06, 0.42);
   addBody('alphaCenB', bLocal, 0.86 * R_SUN_KM, 274, 1.5, matB, {
-    color: new THREE.Color(1.0, 0.62, 0.3), scale: 7,
+    // The halo stays inside a few stellar radii — Centauri Prime orbits
+    // half a scene unit out and a wide glow would swallow it.
+    color: new THREE.Color(1.0, 0.62, 0.3), scale: 2.6,
   });
   const lightB = new THREE.PointLight(0xffc890, 4.0, 3.5, 1.1);
   lightB.position.copy(bLocal);
@@ -182,7 +184,7 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
   owned.push(matP);
   const proximaLocal = new THREE.Vector3(-2.6, -0.5, 1.6);
   addBody('proxima', proximaLocal, 0.154 * R_SUN_KM, 274, 1.5, matP, {
-    color: new THREE.Color(1.0, 0.4, 0.22), scale: 6,
+    color: new THREE.Color(1.0, 0.4, 0.22), scale: 3,
   });
   const lightP = new THREE.PointLight(0xff7a48, 2.4, 2.2, 1.1);
   lightP.position.copy(proximaLocal);

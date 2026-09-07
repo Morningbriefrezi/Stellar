@@ -50,9 +50,14 @@ const REGIMES: Record<Exclude<SpeedMode, 'jump'>, Regime> = {
   fast: { max: 22 * U, boost: 34 * U, accel: 120 * U, turn: 0.55, camBack: 40 * H, fov: 60 },
 };
 /** EVA: the suit's SAFER jets — slow, precise, no weapons. */
-const E = 0.18 * H;
-const EVA: Regime = { max: 0.5 * U, boost: 0.9 * U, accel: 3 * U, turn: 1, camBack: 26 * E, fov: 50 };
-const EVA_CAM_UP = 7 * E;
+// Suit scale. The world camera's near plane sits at 0.02 scene units —
+// about 15 hull units — so an EVA camera can never ride closer than that.
+// The suit is sized against that floor instead of against the airframe:
+// small enough to read as a person beside the fighter, large enough to be
+// a person on screen rather than two pixels.
+const E = 1.5 * H;
+const EVA: Regime = { max: 0.5 * U, boost: 0.9 * U, accel: 3 * U, turn: 1, camBack: 14 * E, fov: 50 };
+const EVA_CAM_UP = 2.2 * E;
 const EVA_HULL_RADIUS = 0.6 * E;
 /** How close the suit must be to climb back aboard. */
 const BOARD_RANGE = 14 * H;
@@ -71,6 +76,13 @@ const BORESIGHT = 120 * H;
 const JUMP_CAM_BACK = 44 * H;
 const JUMP_FOV = 74;
 const CAM_UP = 8 * H;
+/** Chase-camera distance multiplier: how close and how far the player can pull. */
+const CAM_ZOOM_MIN = 0.45;
+const CAM_ZOOM_MAX = 3.2;
+const CAM_ZOOM_STEP = 1.16;
+/** The chase camera stops here: the world's near plane is 0.02 scene units,
+ *  and anything closer would clip the ship — or the suit — out of frame. */
+const MIN_CAM_BACK = 17 * H;
 const CAM_LERP = 0.08; // per 60 fps frame
 const DRAG_PER_FRAME = 0.92; // at 60 fps; applied as pow(0.92, dt·60)
 const YAW_RATE = 1.5;
@@ -136,6 +148,9 @@ export interface FlightInput {
   eject: boolean;
   /** One-shot: chase camera ↔ cockpit. */
   viewToggle: boolean;
+  /** Chase-camera distance multiplier — the wheel, the +/− keys and the
+   *  HUD's camera keys all move this. 1 = the regime's own distance. */
+  camZoom: number;
 }
 
 export interface FlightTelemetry {
@@ -246,6 +261,7 @@ export function clearFlightInput(input: FlightInput) {
   input.foilsToggle = false;
   input.eject = false;
   input.viewToggle = false;
+  input.camZoom = 1;
 }
 
 export function createFlightSession(): FlightSession {
@@ -256,6 +272,7 @@ export function createFlightSession(): FlightSession {
       thrust: 0, yaw: 0, lookYaw: 0, pitch: 0, roll: 0,
       boost: false, fire: false, mouseDX: 0, mouseDY: 0,
       modeRequest: null, foilsToggle: false, eject: false, viewToggle: false,
+      camZoom: 1,
     },
     telemetry: {
       speed: 0,
@@ -302,7 +319,14 @@ const HANDLED_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight',
   'Digit1', 'Digit2', 'Digit3', 'KeyF', 'KeyH', 'KeyV', 'KeyC',
+  'Minus', 'Equal', 'BracketLeft', 'BracketRight',
 ]);
+
+/** Pull the chase camera in or push it out, within its stops. */
+export function zoomFlightCamera(input: FlightInput, direction: number) {
+  const next = input.camZoom * (direction > 0 ? CAM_ZOOM_STEP : 1 / CAM_ZOOM_STEP);
+  input.camZoom = THREE.MathUtils.clamp(next, CAM_ZOOM_MIN, CAM_ZOOM_MAX);
+}
 
 /**
  * Keyboard + pointer-lock mouse. Must be called from a user gesture so the
@@ -338,6 +362,8 @@ export function attachDesktopControls(
     else if (e.code === 'KeyF') input.foilsToggle = true;
     else if (e.code === 'KeyV') input.eject = true;
     else if (e.code === 'KeyC') input.viewToggle = true;
+    else if (e.code === 'Minus' || e.code === 'BracketLeft') zoomFlightCamera(input, 1);
+    else if (e.code === 'Equal' || e.code === 'BracketRight') zoomFlightCamera(input, -1);
     pressed.add(e.code);
     sync();
   };
@@ -348,6 +374,10 @@ export function attachDesktopControls(
   const onMouseMove = (e: MouseEvent) => {
     input.mouseDX += e.movementX;
     input.mouseDY += e.movementY;
+  };
+  const onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    zoomFlightCamera(input, e.deltaY > 0 ? 1 : -1);
   };
   const onBlur = () => {
     pressed.clear();
@@ -365,6 +395,7 @@ export function attachDesktopControls(
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('blur', onBlur);
   document.addEventListener('pointerlockchange', onLockChange);
   try {
@@ -377,6 +408,7 @@ export function attachDesktopControls(
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('wheel', onWheel);
     window.removeEventListener('blur', onBlur);
     document.removeEventListener('pointerlockchange', onLockChange);
     lockHeld = false;
@@ -405,6 +437,9 @@ interface ShipParts {
   engineMat: THREE.MeshStandardMaterial;
   glowMats: THREE.SpriteMaterial[];
   glowSprites: THREE.Sprite[];
+  /** Exhaust cones behind each nozzle — stretched by throttle. */
+  plumes: THREE.Mesh[];
+  plumeMat: THREE.MeshBasicMaterial | null;
   plasmaMat: THREE.SpriteMaterial;
   plasma: THREE.Sprite;
   strobeMat: THREE.MeshBasicMaterial;
@@ -412,6 +447,16 @@ interface ShipParts {
   navMats: THREE.MeshBasicMaterial[];
   /** Materials shared across meshes — disposed once, by hand. */
   owned: THREE.Material[];
+}
+
+/** A hollow cone for an exhaust plume: base at the nozzle, tip trailing
+ *  aft. Built along +Y, so the caller rotates it onto -Z. */
+function plumeCone(radius: number, length: number): THREE.ConeGeometry {
+  const geom = new THREE.ConeGeometry(radius, length, 14, 1, true);
+  // Cone apex sits at +length/2; shift so the wide end lands on the origin
+  // and the point runs out along +Y.
+  geom.translate(0, length / 2, 0);
+  return geom;
 }
 
 /**
@@ -427,24 +472,29 @@ function buildShip(): ShipParts {
   const hull = new THREE.Group();
   group.add(hull);
 
-  // Matte, panelled, weathered grey-white — a working fighter, not chrome.
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xd7dbe0, roughness: 0.58, metalness: 0.32 });
-  const panel = new THREE.MeshStandardMaterial({ color: 0x8b929c, roughness: 0.6, metalness: 0.4 });
-  const shroud = new THREE.MeshStandardMaterial({ color: 0x2a2e36, roughness: 0.7, metalness: 0.45 });
-  const stripe = new THREE.MeshStandardMaterial({ color: 0xb3342b, roughness: 0.55, metalness: 0.2 });
+  // Same finish as the interceptor: brushed gunmetal, black trim, one dark
+  // red squadron accent, and ice-blue drives.
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xaeb5bf, roughness: 0.42, metalness: 0.72 });
+  const panel = new THREE.MeshStandardMaterial({ color: 0x767d88, roughness: 0.5, metalness: 0.66 });
+  const shroud = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.66, metalness: 0.5 });
+  const stripe = new THREE.MeshStandardMaterial({ color: 0x8e2b26, roughness: 0.5, metalness: 0.3 });
   const glass = new THREE.MeshStandardMaterial({
-    color: 0x18222e, roughness: 0.1, metalness: 0.85,
-    emissive: new THREE.Color(0x0c1e2c), emissiveIntensity: 0.5,
+    color: 0x0a1622, roughness: 0.06, metalness: 0.95,
+    emissive: new THREE.Color(0x0d3346), emissiveIntensity: 0.7,
   });
   const droid = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3b7bff).multiplyScalar(1.4) });
   const engineMat = new THREE.MeshStandardMaterial({
-    color: 0xffc0b0,
-    emissive: new THREE.Color(0xff5a3c),
+    color: 0xdcf2ff,
+    emissive: new THREE.Color(0x53b8ff),
     emissiveIntensity: 1.8,
-    roughness: 0.3,
+    roughness: 0.25,
     metalness: 0,
   });
-  const owned: THREE.Material[] = [skinMat, panel, shroud, stripe, glass, droid, engineMat];
+  const plumeMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0.55, 0.82, 1.5), transparent: true, opacity: 0.5,
+    depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+  const owned: THREE.Material[] = [skinMat, panel, shroud, stripe, glass, droid, engineMat, plumeMat];
 
   // ── Fuselage: engine box aft, long nose forward ──
   const aft = new THREE.Mesh(new THREE.BoxGeometry(1.3 * H, 1.0 * H, 2.6 * H), panel);
@@ -515,6 +565,8 @@ function buildShip(): ShipParts {
   const glowTex = softSpriteTexture();
   const glowMats: THREE.SpriteMaterial[] = [];
   const glowSprites: THREE.Sprite[] = [];
+  const plumes: THREE.Mesh[] = [];
+  const plumeGeom = plumeCone(0.26 * H, 3.6 * H);
   const foils: Foil[] = [];
   const cannonTips: THREE.Object3D[] = [];
   const navMats: THREE.MeshBasicMaterial[] = [];
@@ -553,9 +605,14 @@ function buildShip(): ShipParts {
       nozzle.rotation.x = Math.PI / 2;
       nozzle.position.set(side * 0.45 * H, layer * 0.2 * H, -1.44 * H);
       pivot.add(nozzle);
+      const plume = new THREE.Mesh(plumeGeom, plumeMat);
+      plume.rotation.x = -Math.PI / 2;
+      plume.position.set(side * 0.45 * H, layer * 0.2 * H, -1.5 * H);
+      pivot.add(plume);
+      plumes.push(plume);
       const mat = new THREE.SpriteMaterial({
         map: glowTex,
-        color: 0xff7a55,
+        color: 0x7fd4ff,
         transparent: true,
         opacity: 0.75,
         depthWrite: false,
@@ -614,14 +671,15 @@ function buildShip(): ShipParts {
 
   return {
     group, hull, foils, cannonTips, skinMat, engineMat, glowMats, glowSprites,
-    plasmaMat, plasma, strobeMat, navMats, owned,
+    plumes, plumeMat, plasmaMat, plasma, strobeMat, navMats, owned,
   };
 }
 
 /**
- * Interceptor: a flat arrowhead with forward canards, a bubble canopy, a
- * single dorsal fin and two big engines aft — the fast one. Two chin
- * cannons, no S-foils. Forward is +Z.
+ * Interceptor: a slim gunmetal fuselage between two big nacelles, sharply
+ * swept wings tipped with the navigation pods, forward canards and a pair
+ * of chin cannons. The drives burn ice-blue and trail a long plume — the
+ * look of the reference airframe. Forward is +Z.
  */
 function buildInterceptor(): ShipParts {
   const group = new THREE.Group();
@@ -629,113 +687,188 @@ function buildInterceptor(): ShipParts {
   const hull = new THREE.Group();
   group.add(hull);
 
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0x3a3f48, roughness: 0.5, metalness: 0.55 });
-  const panel = new THREE.MeshStandardMaterial({ color: 0x5c626c, roughness: 0.55, metalness: 0.5 });
-  const shroud = new THREE.MeshStandardMaterial({ color: 0x1c1f25, roughness: 0.7, metalness: 0.45 });
-  const accent = new THREE.MeshStandardMaterial({ color: 0xff8a2a, roughness: 0.5, metalness: 0.25 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xaeb5bf, roughness: 0.42, metalness: 0.72 });
+  const panel = new THREE.MeshStandardMaterial({ color: 0x767d88, roughness: 0.5, metalness: 0.66 });
+  const shroud = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.66, metalness: 0.5 });
+  const accent = new THREE.MeshStandardMaterial({ color: 0x8e2b26, roughness: 0.5, metalness: 0.3 });
   const glass = new THREE.MeshStandardMaterial({
-    color: 0x0f2230, roughness: 0.08, metalness: 0.9,
-    emissive: new THREE.Color(0x0a2a3a), emissiveIntensity: 0.6,
+    color: 0x0a1622, roughness: 0.06, metalness: 0.95,
+    emissive: new THREE.Color(0x0d3346), emissiveIntensity: 0.7,
   });
   const engineMat = new THREE.MeshStandardMaterial({
-    color: 0xc0e8ff, emissive: new THREE.Color(0x3aa8ff), emissiveIntensity: 1.8, roughness: 0.3, metalness: 0,
+    color: 0xdcf2ff, emissive: new THREE.Color(0x53b8ff), emissiveIntensity: 1.8, roughness: 0.25, metalness: 0,
   });
-  const owned: THREE.Material[] = [skinMat, panel, shroud, accent, glass, engineMat];
+  const plumeMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0.55, 0.82, 1.5), transparent: true, opacity: 0.5,
+    depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+  const owned: THREE.Material[] = [skinMat, panel, shroud, accent, glass, engineMat, plumeMat];
 
-  // Arrowhead body: a four-sided cone flattened into a wedge.
-  const wedge = new THREE.Mesh(new THREE.ConeGeometry(1.7 * H, 6 * H, 4), skinMat);
-  wedge.rotation.x = Math.PI / 2;
-  wedge.rotation.y = Math.PI / 4;
-  wedge.scale.set(1, 1, 0.3);
-  wedge.position.z = 0.5 * H;
-  hull.add(wedge);
-  const belly = new THREE.Mesh(new THREE.BoxGeometry(1.2 * H, 0.3 * H, 3.2 * H), panel);
-  belly.position.set(0, -0.25 * H, -0.6 * H);
-  hull.add(belly);
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.42 * H, 14, 10), glass);
-  canopy.scale.set(0.8, 0.5, 1.5);
-  canopy.position.set(0, 0.36 * H, 0.7 * H);
+  // ── Fuselage: a six-sided spine, a long nose, a keel under it. ──
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * H, 0.62 * H, 4.4 * H, 6), skinMat);
+  body.rotation.x = Math.PI / 2;
+  body.rotation.z = Math.PI / 6;
+  body.position.z = 0.2 * H;
+  hull.add(body);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.42 * H, 2.6 * H, 6), skinMat);
+  nose.rotation.x = Math.PI / 2;
+  nose.rotation.z = Math.PI / 6;
+  nose.position.z = 3.7 * H;
+  hull.add(nose);
+  const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.03 * H, 0.05 * H, 1.1 * H, 6), shroud);
+  probe.rotation.x = Math.PI / 2;
+  probe.position.z = 5.4 * H;
+  hull.add(probe);
+  const keel = new THREE.Mesh(new THREE.BoxGeometry(0.7 * H, 0.22 * H, 3.4 * H), shroud);
+  keel.position.set(0, -0.56 * H, 0.1 * H);
+  hull.add(keel);
+  const spine = new THREE.Mesh(new THREE.BoxGeometry(0.5 * H, 0.16 * H, 3.0 * H), panel);
+  spine.position.set(0, 0.52 * H, -0.4 * H);
+  hull.add(spine);
+
+  // ── Canopy: a narrow dark blister in a black coaming. ──
+  const coaming = new THREE.Mesh(new THREE.BoxGeometry(0.7 * H, 0.3 * H, 1.7 * H), shroud);
+  coaming.position.set(0, 0.42 * H, 1.35 * H);
+  hull.add(coaming);
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.34 * H, 16, 12), glass);
+  canopy.scale.set(0.9, 0.62, 2.2);
+  canopy.position.set(0, 0.56 * H, 1.35 * H);
   hull.add(canopy);
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.06 * H, 0.9 * H, 1.2 * H), skinMat);
-  fin.position.set(0, 0.6 * H, -1.9 * H);
-  fin.rotation.x = 0.25;
-  hull.add(fin);
-  const finStripe = new THREE.Mesh(new THREE.BoxGeometry(0.08 * H, 0.2 * H, 1.0 * H), accent);
-  finStripe.position.set(0, 0.9 * H, -1.95 * H);
-  finStripe.rotation.x = 0.25;
-  hull.add(finStripe);
-  const stripeGeom = new THREE.BoxGeometry(0.1 * H, 0.03 * H, 3.2 * H);
-  for (const side of [-1, 1]) {
-    const st = new THREE.Mesh(stripeGeom, accent);
-    st.position.set(side * 0.45 * H, 0.27 * H, 0.4 * H);
-    st.rotation.y = side * 0.12;
-    hull.add(st);
+
+  // ── Tail fins: two small canted stabilisers, not one big sail. ──
+  const finGeom = new THREE.BoxGeometry(0.07 * H, 1.0 * H, 1.1 * H);
+  for (const side of [1, -1]) {
+    const fin = new THREE.Mesh(finGeom, skinMat);
+    fin.position.set(side * 0.42 * H, 0.62 * H, -1.9 * H);
+    fin.rotation.z = side * 0.32;
+    fin.rotation.x = 0.22;
+    hull.add(fin);
   }
-  // Canards and engines.
-  const canardGeom = new THREE.BoxGeometry(1.4 * H, 0.06 * H, 0.5 * H);
-  const engineGeom = new THREE.CylinderGeometry(0.42 * H, 0.36 * H, 2.0 * H, 16);
-  const nozzleGeom = new THREE.CylinderGeometry(0.3 * H, 0.26 * H, 0.14 * H, 16);
-  const ringGeom = new THREE.CylinderGeometry(0.38 * H, 0.38 * H, 0.3 * H, 16, 1, true);
-  const cannonGeom = new THREE.CylinderGeometry(0.06 * H, 0.07 * H, 1.8 * H, 8);
-  const navGeom = new THREE.SphereGeometry(0.08 * H, 8, 8);
+
+  const canardGeom = new THREE.BoxGeometry(1.5 * H, 0.07 * H, 0.6 * H);
+  const nacelleGeom = new THREE.CylinderGeometry(0.6 * H, 0.52 * H, 3.4 * H, 18);
+  const intakeGeom = new THREE.CylinderGeometry(0.6 * H, 0.6 * H, 0.34 * H, 18, 1, true);
+  const nozzleGeom = new THREE.CylinderGeometry(0.44 * H, 0.4 * H, 0.16 * H, 18);
+  const ringGeom = new THREE.CylinderGeometry(0.56 * H, 0.56 * H, 0.36 * H, 18, 1, true);
+  const shoulderGeom = new THREE.BoxGeometry(0.16 * H, 0.22 * H, 1.1 * H);
+  const pylonGeom = new THREE.BoxGeometry(0.5 * H, 0.16 * H, 1.4 * H);
+  const wingGeom = new THREE.BoxGeometry(2.9 * H, 0.09 * H, 1.5 * H);
+  const wingEdgeGeom = new THREE.BoxGeometry(2.9 * H, 0.14 * H, 0.16 * H);
+  const podGeom = new THREE.CylinderGeometry(0.11 * H, 0.09 * H, 0.8 * H, 10);
+  const cannonGeom = new THREE.CylinderGeometry(0.06 * H, 0.075 * H, 2.0 * H, 8);
+  const navGeom = new THREE.SphereGeometry(0.09 * H, 10, 10);
   const glowTex = softSpriteTexture();
   const glowMats: THREE.SpriteMaterial[] = [];
   const glowSprites: THREE.Sprite[] = [];
+  const plumes: THREE.Mesh[] = [];
   const cannonTips: THREE.Object3D[] = [];
   const navMats: THREE.MeshBasicMaterial[] = [];
+  // Forward is +Z with +Y up, so the pilot's left (port) is +X: red to port,
+  // green to starboard, the way every aircraft carries them.
   const navColour: Record<number, number> = { 1: 0xff3b30, [-1]: 0x30ff6a };
+  const plumeGeom = plumeCone(0.4 * H, 5.2 * H);
+
   for (const side of [1, -1]) {
+    // Canard, well forward, sharply swept.
     const canard = new THREE.Mesh(canardGeom, panel);
-    canard.position.set(side * 1.1 * H, 0.05 * H, 1.5 * H);
-    canard.rotation.y = side * 0.55;
+    canard.position.set(side * 1.05 * H, 0.02 * H, 2.35 * H);
+    canard.rotation.y = side * 0.62;
+    canard.rotation.z = -side * 0.12;
     hull.add(canard);
-    const engine = new THREE.Mesh(engineGeom, panel);
-    engine.rotation.x = Math.PI / 2;
-    engine.position.set(side * 0.95 * H, -0.05 * H, -1.9 * H);
-    hull.add(engine);
+
+    // Nacelle on a short pylon, with intake, shroud ring and hot nozzle.
+    const px = side * 1.15 * H;
+    const pylon = new THREE.Mesh(pylonGeom, panel);
+    pylon.position.set(side * 0.78 * H, -0.06 * H, -0.7 * H);
+    hull.add(pylon);
+    const nacelle = new THREE.Mesh(nacelleGeom, skinMat);
+    nacelle.rotation.x = Math.PI / 2;
+    nacelle.position.set(px, -0.1 * H, -1.1 * H);
+    hull.add(nacelle);
+    const intake = new THREE.Mesh(intakeGeom, shroud);
+    intake.rotation.x = Math.PI / 2;
+    intake.position.set(px, -0.1 * H, 0.5 * H);
+    hull.add(intake);
+    const shoulder = new THREE.Mesh(shoulderGeom, accent);
+    shoulder.position.set(px - side * 0.56 * H, 0.12 * H, 0.1 * H);
+    hull.add(shoulder);
     const ring = new THREE.Mesh(ringGeom, shroud);
     ring.rotation.x = Math.PI / 2;
-    ring.position.set(side * 0.95 * H, -0.05 * H, -2.9 * H);
+    ring.position.set(px, -0.1 * H, -2.72 * H);
     hull.add(ring);
     const nozzle = new THREE.Mesh(nozzleGeom, engineMat);
     nozzle.rotation.x = Math.PI / 2;
-    nozzle.position.set(side * 0.95 * H, -0.05 * H, -2.96 * H);
+    nozzle.position.set(px, -0.1 * H, -2.84 * H);
     hull.add(nozzle);
-    const mat = new THREE.SpriteMaterial({ map: glowTex, color: 0x5fc8ff, transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending });
+    const plume = new THREE.Mesh(plumeGeom, plumeMat);
+    plume.rotation.x = -Math.PI / 2;
+    plume.position.set(px, -0.1 * H, -2.9 * H);
+    hull.add(plume);
+    plumes.push(plume);
+    const mat = new THREE.SpriteMaterial({
+      map: glowTex, color: 0x7fd4ff, transparent: true, opacity: 0.75,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    });
     const sprite = new THREE.Sprite(mat);
-    sprite.position.set(side * 0.95 * H, -0.05 * H, -3.15 * H);
-    sprite.scale.setScalar(1.5 * H);
+    sprite.position.set(px, -0.1 * H, -3.0 * H);
+    sprite.scale.setScalar(1.9 * H);
     hull.add(sprite);
     glowMats.push(mat);
     glowSprites.push(sprite);
-    const cannon = new THREE.Mesh(cannonGeom, shroud);
-    cannon.rotation.x = Math.PI / 2;
-    cannon.position.set(side * 0.5 * H, -0.32 * H, 2.0 * H);
-    hull.add(cannon);
-    const tip = new THREE.Object3D();
-    tip.position.set(side * 0.5 * H, -0.32 * H, 3.0 * H);
-    hull.add(tip);
-    cannonTips.push(tip);
+
+    // Wing: swept back off the nacelle, tipped with the navigation pod.
+    const wing = new THREE.Mesh(wingGeom, skinMat);
+    wing.position.set(side * 2.75 * H, -0.06 * H, -0.9 * H);
+    wing.rotation.y = side * 0.5;
+    wing.rotation.z = -side * 0.16;
+    hull.add(wing);
+    const edge = new THREE.Mesh(wingEdgeGeom, panel);
+    edge.position.set(side * 2.9 * H, -0.02 * H, -0.16 * H);
+    edge.rotation.y = side * 0.5;
+    edge.rotation.z = -side * 0.16;
+    hull.add(edge);
+    const pod = new THREE.Mesh(podGeom, panel);
+    pod.rotation.x = Math.PI / 2;
+    pod.position.set(side * 4.1 * H, -0.2 * H, -1.5 * H);
+    hull.add(pod);
     const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(navColour[side]).multiplyScalar(1.6) });
     m.userData.base = navColour[side];
     const light = new THREE.Mesh(navGeom, m);
-    light.position.set(side * 1.72 * H, 0.05 * H, 1.35 * H);
+    light.position.set(side * 4.1 * H, -0.2 * H, -1.1 * H);
     hull.add(light);
     owned.push(m);
     navMats.push(m);
+
+    // Chin cannon.
+    const cannon = new THREE.Mesh(cannonGeom, shroud);
+    cannon.rotation.x = Math.PI / 2;
+    cannon.position.set(side * 0.42 * H, -0.38 * H, 1.9 * H);
+    hull.add(cannon);
+    const tip = new THREE.Object3D();
+    tip.position.set(side * 0.42 * H, -0.38 * H, 3.0 * H);
+    hull.add(tip);
+    cannonTips.push(tip);
   }
+
   const strobeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const strobe = new THREE.Mesh(navGeom, strobeMat);
-  strobe.position.set(0, 1.08 * H, -2.0 * H);
+  strobe.position.set(0, 0.68 * H, -1.7 * H);
   hull.add(strobe);
   owned.push(strobeMat);
-  const plasmaMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xff8a3a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+
+  const plasmaMat = new THREE.SpriteMaterial({
+    map: glowTex, color: 0xff8a3a, transparent: true, opacity: 0,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  });
   const plasma = new THREE.Sprite(plasmaMat);
-  plasma.position.set(0, 0, 3.0 * H);
+  plasma.position.set(0, 0, 4.4 * H);
   plasma.scale.setScalar(4 * H);
   hull.add(plasma);
 
-  return { group, hull, foils: [], cannonTips, skinMat, engineMat, glowMats, glowSprites, plasmaMat, plasma, strobeMat, navMats, owned };
+  return {
+    group, hull, foils: [], cannonTips, skinMat, engineMat, glowMats, glowSprites,
+    plumes, plumeMat, plasmaMat, plasma, strobeMat, navMats, owned,
+  };
 }
 
 /**
@@ -765,31 +898,50 @@ function buildCosmonaut(): ShipParts {
   vis.scale.set(1, 0.85, 0.7);
   vis.position.set(0, 0.7 * E, 0.16 * E);
   hull.add(vis);
-  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.6 * E, 0.8 * E, 0.32 * E), grey);
-  pack.position.set(0, 0.05 * E, -0.44 * E);
+  // Neck ring, so the helmet reads as a separate piece.
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.24 * E, 0.24 * E, 0.07 * E, 14), grey);
+  ring.position.set(0, 0.46 * E, 0);
+  hull.add(ring);
+  // Life support: the pack is what you see from behind, so it is the
+  // biggest thing on the suit and a different colour from the torso.
+  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.66 * E, 0.9 * E, 0.36 * E), grey);
+  pack.position.set(0, 0.04 * E, -0.46 * E);
   hull.add(pack);
+  const packLid = new THREE.Mesh(new THREE.BoxGeometry(0.7 * E, 0.1 * E, 0.4 * E), red);
+  packLid.position.set(0, 0.5 * E, -0.46 * E);
+  hull.add(packLid);
   const chest = new THREE.Mesh(new THREE.BoxGeometry(0.28 * E, 0.16 * E, 0.04 * E), display);
   chest.position.set(0, 0.2 * E, 0.35 * E);
   hull.add(chest);
-  const limbGeom = new THREE.CapsuleGeometry(0.1 * E, 0.55 * E, 4, 8);
-  const legGeom = new THREE.CapsuleGeometry(0.12 * E, 0.7 * E, 4, 8);
-  const stripeGeom = new THREE.BoxGeometry(0.22 * E, 0.06 * E, 0.22 * E);
+  const limbGeom = new THREE.CapsuleGeometry(0.11 * E, 0.62 * E, 4, 8);
+  const legGeom = new THREE.CapsuleGeometry(0.13 * E, 0.78 * E, 4, 8);
+  const gloveGeom = new THREE.SphereGeometry(0.13 * E, 10, 8);
+  const bootGeom = new THREE.BoxGeometry(0.22 * E, 0.14 * E, 0.34 * E);
+  const stripeGeom = new THREE.BoxGeometry(0.24 * E, 0.06 * E, 0.24 * E);
   for (const side of [-1, 1]) {
+    // Arms held out and forward, the way a suited crew member floats.
     const arm = new THREE.Mesh(limbGeom, skinMat);
-    arm.position.set(side * 0.46 * E, 0.05 * E, 0.12 * E);
-    arm.rotation.z = side * 0.35;
-    arm.rotation.x = -0.4;
+    arm.position.set(side * 0.52 * E, 0.02 * E, 0.14 * E);
+    arm.rotation.z = side * 0.62;
+    arm.rotation.x = -0.5;
     hull.add(arm);
+    const glove = new THREE.Mesh(gloveGeom, grey);
+    glove.position.set(side * 0.78 * E, 0.26 * E, 0.36 * E);
+    hull.add(glove);
     const armStripe = new THREE.Mesh(stripeGeom, red);
-    armStripe.position.set(side * 0.5 * E, 0.2 * E, 0.08 * E);
-    armStripe.rotation.z = side * 0.35;
+    armStripe.position.set(side * 0.58 * E, 0.2 * E, 0.1 * E);
+    armStripe.rotation.z = side * 0.62;
     hull.add(armStripe);
     const leg = new THREE.Mesh(legGeom, skinMat);
-    leg.position.set(side * 0.17 * E, -0.75 * E, 0.02 * E);
-    leg.rotation.x = 0.25;
+    leg.position.set(side * 0.21 * E, -0.8 * E, 0.02 * E);
+    leg.rotation.x = 0.22;
+    leg.rotation.z = side * 0.1;
     hull.add(leg);
+    const boot = new THREE.Mesh(bootGeom, grey);
+    boot.position.set(side * 0.24 * E, -1.24 * E, 0.14 * E);
+    hull.add(boot);
     const legStripe = new THREE.Mesh(stripeGeom, red);
-    legStripe.position.set(side * 0.17 * E, -0.55 * E, 0.06 * E);
+    legStripe.position.set(side * 0.21 * E, -0.58 * E, 0.06 * E);
     hull.add(legStripe);
   }
   // SAFER nozzles at the pack's lower corners, with their exhaust.
@@ -819,7 +971,7 @@ function buildCosmonaut(): ShipParts {
   plasma.position.set(0, 0.2 * E, 0.5 * E);
   plasma.scale.setScalar(2.2 * E);
   hull.add(plasma);
-  return { group, hull, foils: [], cannonTips: [], skinMat, engineMat, glowMats, glowSprites, plasmaMat, plasma, strobeMat, navMats: [], owned };
+  return { group, hull, foils: [], cannonTips: [], skinMat, engineMat, glowMats, glowSprites, plumes: [], plumeMat: null, plasmaMat, plasma, strobeMat, navMats: [], owned };
 }
 
 /* ───────────────────────── audio ───────────────────────── */
@@ -1424,7 +1576,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         camUp.lerp(up, k).normalize();
       }
       camera.up.copy(camUp);
-      lookPt.copy(a.position).addScaledVector(fwd, pilot === 'ship' ? 6 * U : 8 * E);
+      lookPt.copy(a.position).addScaledVector(fwd, pilot === 'ship' ? 6 * U : 2 * E);
       camera.lookAt(lookPt);
     }
     if (shake > 0.002) {
@@ -1546,14 +1698,14 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
             vel.set(0, 0, 0);
             angVel.set(0, 0, 0);
             mode = 'cruise';
-            camBack = EVA.camBack;
+            camBack = Math.max(MIN_CAM_BACK, EVA.camBack * (input.camZoom || 1));
             snapCamera = true;
           } else if (evaG.position.distanceTo(group.position) < BOARD_RANGE) {
             pilot = 'ship';
             evaG.visible = false;
             vel.set(0, 0, 0);
             angVel.set(0, 0, 0);
-            camBack = regimes[mode === 'jump' ? 'cruise' : mode].camBack;
+            camBack = Math.max(MIN_CAM_BACK, regimes[mode === 'jump' ? 'cruise' : mode].camBack * (input.camZoom || 1));
             snapCamera = true;
           }
         }
@@ -1815,6 +1967,13 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         const gs = (1.0 + 0.4 * (pulse - 0.8)) * glowBase;
         live.glowSprites[i].scale.set(gs, gs, 1);
       }
+      // The plume is the throttle made visible: a stub at idle, a long
+      // tapering cone under boost or a charging drive.
+      if (live.plumeMat) {
+        live.plumeMat.opacity = Math.min(0.85, 0.14 + 0.34 * (pulse - 0.8));
+        const stretch = 0.35 + 0.85 * Math.min(1.6, pulse - 0.75);
+        for (const pl of live.plumes) pl.scale.set(1, Math.max(0.12, stretch), 1);
+      }
       // Anti-collision strobe: a double flash roughly once a second, the
       // rhythm every real aircraft and spacecraft carries.
       const beat = timeSec % 1.4;
@@ -1925,7 +2084,11 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
 
       // ── Follow camera; the regime sets how far back it rides. ──
       fwd.set(0, 0, 1).applyQuaternion(me.quaternion);
-      const camBackTarget = jumpPhase !== 'none' ? JUMP_CAM_BACK : regime.camBack;
+      const camZoom = THREE.MathUtils.clamp(input.camZoom || 1, CAM_ZOOM_MIN, CAM_ZOOM_MAX);
+      const camBackTarget = Math.max(
+        MIN_CAM_BACK,
+        (jumpPhase !== 'none' ? JUMP_CAM_BACK : regime.camBack) * camZoom,
+      );
       camBack += (camBackTarget - camBack) * (1 - Math.exp(-dt * 2.5));
       const fovTarget = jumpPhase !== 'none' ? JUMP_FOV : view === 'cockpit' && pilot === 'ship' ? COCKPIT_FOV : regime.fov;
       updateCamera(dt, camera, fovTarget);

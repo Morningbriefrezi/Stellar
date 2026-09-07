@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
-  bodyColor,
   MEAN_RADIUS_KM,
   sampleSolarSystem,
   worldRadiusForBody,
@@ -772,27 +771,16 @@ export function SolarSystemCanvas({
         hit!.position.copy(s.position);
       }
 
-      const sel = selectedRef.current;
+      // A body looks the same whether or not it is selected: the popup and
+      // the camera say what is selected, so nothing here inflates the sphere
+      // or floods it with emissive — both read as a loss of detail up close.
       meshById.forEach((mesh, id) => {
-        const isSel = sel === id;
-        mesh.scale.setScalar(isSel ? 1.08 : 1);
-        if (id === 'sun') {
-          sunSurface.setBoost(isSel ? 1 : 0);
-          return;
-        }
+        if (id === 'sun') return;
         const mat = mesh.material as THREE.MeshStandardMaterial;
-        const base = bodyColor(id);
         if (id === 'earth' && mat.emissiveMap) {
-          // Night-side city lights ride the emissive map; selection just
-          // boosts the same channel.
+          // Night-side city lights ride the emissive map.
           mat.emissive.setHex(0xffd9a0);
-          mat.emissiveIntensity = 0.85 + (isSel ? 0.3 : 0);
-        } else if (isSel) {
-          mat.emissive.setHex(base);
-          mat.emissiveIntensity = 0.2;
-        } else {
-          mat.emissive.setHex(0x000000);
-          mat.emissiveIntensity = 0;
+          mat.emissiveIntensity = 0.85;
         }
       });
 
@@ -1330,11 +1318,7 @@ export function SolarSystemCanvas({
       if (ship && cockpit && session) {
         const tel = session.telemetry;
         if (tel.view === 'cockpit' && tel.pilot === 'ship' && !tel.crashed) {
-          cockpit.update(
-            dtSec, tel.bank, tel.pitchRate, tel.shake,
-            tel.speedKmS, tel.speedC, tel.maxKmS,
-            tel.nearAltKm, tel.nearId, tel.hp, tel.mode, tel.heat,
-          );
+          cockpit.update(dtSec, tel);
           renderer.autoClear = false;
           renderer.clearDepth();
           renderer.render(cockpit.scene, cockpit.camera);
