@@ -1136,6 +1136,12 @@
       "camera": "კამერა",
       "camIn": "კამერა ახლოს",
       "camOut": "კამერა შორს",
+      "odometer": "ოდომეტრი",
+      "shield": "ფარი",
+      "energy": "ენერგია",
+      "altShort": "სიმაღ.",
+      "velShort": "სიჩქ.",
+      "orbitOf": "{body} — ორბიტა",
       "commsHeader": "შემომავალი გადაცემა · {from}",
       "comms": {
         "centauriPrime": {

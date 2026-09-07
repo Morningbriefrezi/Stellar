@@ -1136,6 +1136,12 @@
       "camera": "Camera",
       "camIn": "Camera closer",
       "camOut": "Camera farther",
+      "odometer": "Odometer",
+      "shield": "Shield",
+      "energy": "Energy",
+      "altShort": "Alt",
+      "velShort": "Vel",
+      "orbitOf": "{body} orbit",
       "commsHeader": "Incoming transmission · {from}",
       "comms": {
         "centauriPrime": {

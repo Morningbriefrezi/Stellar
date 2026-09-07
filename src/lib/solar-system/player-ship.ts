@@ -44,10 +44,10 @@ interface Regime {
   fov: number;
 }
 const REGIMES: Record<Exclude<SpeedMode, 'jump'>, Regime> = {
-  cruise: { max: 2.5 * U, boost: 5 * U, accel: 14 * U, turn: 1, camBack: 30 * H, fov: 46 },
+  cruise: { max: 2.5 * U, boost: 5 * U, accel: 14 * U, turn: 1, camBack: 24 * H, fov: 46 },
   // Drag settles thrust at accel / (60 · 0.08); the fast regime needs the
   // extra push to actually reach its ceiling.
-  fast: { max: 22 * U, boost: 34 * U, accel: 120 * U, turn: 0.55, camBack: 40 * H, fov: 60 },
+  fast: { max: 22 * U, boost: 34 * U, accel: 120 * U, turn: 0.55, camBack: 34 * H, fov: 60 },
 };
 /** EVA: the suit's SAFER jets — slow, precise, no weapons. */
 // Suit scale. The world camera's near plane sits at 0.02 scene units —
@@ -95,6 +95,18 @@ const BOLT_LIFE = 0.8;
 const BOLT_POOL = 16;
 const FIRE_INTERVAL = 0.13;
 
+/** Cannon energy: each bolt spends some, the bank refills between bursts. */
+const ENERGY_PER_SHOT = 0.045;
+const ENERGY_REGEN = 0.17;
+/** Boost reservoir: burns while the throttle is firewalled, refills after.
+ *  Eight seconds of continuous boost, about eleven to fill again — long
+ *  enough to run something down, short enough to be a decision. */
+const BOOST_DRAIN = 0.12;
+const BOOST_REGEN = 0.09;
+const BOOST_REGEN_DELAY = 1.2;
+/** Below this the reservoir is spent and the boost cuts out. */
+const BOOST_FLOOR = 0.02;
+
 const MAX_HP = 100;
 /** Enemy fire and re-entry heat floor here — only a planet kills you. */
 const MIN_HP = 15;
@@ -102,6 +114,8 @@ const HP_REGEN_PER_SEC = 4.5;
 const HP_REGEN_DELAY = 4;
 const RADAR_RANGE = 60 * U;
 export const RADAR_MAX = 16;
+/** Bodies the canvas may label with an on-screen bracket at once. */
+export const MARKER_MAX = 4;
 
 /** Collision sphere around the hull centre. */
 const HULL_RADIUS = 1.3 * H;
@@ -172,6 +186,12 @@ export interface FlightTelemetry {
   foilsOpen: boolean;
   /** 0..1 — atmospheric entry heating. */
   heat: number;
+  /** Distance flown under power, km. Hyperspace legs are not counted —
+   *  four light years would bury every sublight number the odometer shows. */
+  odometerKm: number;
+  /** 0..1 — cannon energy bank and boost reservoir, as the console reads them. */
+  energy: number;
+  boostCharge: number;
   alert: FlightAlert;
   /** Nearest body ('' when nothing within reach) and altitude above its surface. */
   nearId: string;
@@ -198,6 +218,12 @@ export interface FlightTelemetry {
   /** Airframe bank (rad) and pitch rate, for the cockpit overlay. */
   bank: number;
   pitchRate: number;
+  /** On-screen target brackets, filled by the canvas each frame: x, y in CSS
+   *  pixels per marker, with `markerIds` naming them. A body that already
+   *  fills the frame is left unlabelled — you can see what it is. */
+  markers: Float32Array;
+  markerIds: string[];
+  markerCount: number;
   /** Incoming transmission: who, which line (1-based, 0 = none), how far typed. */
   commsFrom: string;
   commsLine: number;
@@ -288,6 +314,9 @@ export function createFlightSession(): FlightSession {
       kills: 0,
       foilsOpen: false,
       heat: 0,
+      odometerKm: 0,
+      energy: 1,
+      boostCharge: 1,
       alert: '',
       nearId: '',
       nearAltKm: 0,
@@ -306,6 +335,9 @@ export function createFlightSession(): FlightSession {
       view: 'chase',
       bank: 0,
       pitchRate: 0,
+      markers: new Float32Array(MARKER_MAX * 2),
+      markerIds: [],
+      markerCount: 0,
       commsFrom: '',
       commsLine: 0,
       commsProgress: 0,
@@ -447,6 +479,20 @@ interface ShipParts {
   navMats: THREE.MeshBasicMaterial[];
   /** Materials shared across meshes — disposed once, by hand. */
   owned: THREE.Material[];
+}
+
+/** A tapered wing panel: a four-sided prism, wide-chorded at the root and
+ *  narrow at the tip, laid along ±X so the caller only has to sweep it.
+ *  `side` is +1 for port (+X), -1 for starboard. */
+function wingPanel(side: number, rootR: number, tipR: number, span: number): THREE.CylinderGeometry {
+  const geom = new THREE.CylinderGeometry(tipR, rootR, span, 4);
+  geom.rotateY(Math.PI / 4);
+  // Thin in Y, long in Z: a section, not a square post.
+  geom.scale(1, 1, 1.5);
+  geom.rotateZ(side > 0 ? -Math.PI / 2 : Math.PI / 2);
+  geom.scale(1, 0.13, 1);
+  geom.translate(side * span * 0.5, 0, 0);
+  return geom;
 }
 
 /** A hollow cone for an exhaust plume: base at the nozzle, tip trailing
@@ -676,10 +722,11 @@ function buildShip(): ShipParts {
 }
 
 /**
- * Interceptor: a slim gunmetal fuselage between two big nacelles, sharply
- * swept wings tipped with the navigation pods, forward canards and a pair
- * of chin cannons. The drives burn ice-blue and trail a long plume — the
- * look of the reference airframe. Forward is +Z.
+ * Interceptor. Built to the reference airframe: a slim gunmetal spine with
+ * a long nose, two heavy nacelles set close in beside it burning ice-blue
+ * and trailing a plume, wings swept hard back off the nacelles with the
+ * navigation pods on the tips, a dark red flash on each nacelle shoulder,
+ * canards forward and a pair of chin cannons. Forward is +Z.
  */
 function buildInterceptor(): ShipParts {
   const group = new THREE.Group();
@@ -687,172 +734,184 @@ function buildInterceptor(): ShipParts {
   const hull = new THREE.Group();
   group.add(hull);
 
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xaeb5bf, roughness: 0.42, metalness: 0.72 });
-  const panel = new THREE.MeshStandardMaterial({ color: 0x767d88, roughness: 0.5, metalness: 0.66 });
-  const shroud = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.66, metalness: 0.5 });
-  const accent = new THREE.MeshStandardMaterial({ color: 0x8e2b26, roughness: 0.5, metalness: 0.3 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xb4bcc6, roughness: 0.36, metalness: 0.78 });
+  const panel = new THREE.MeshStandardMaterial({ color: 0x6f7681, roughness: 0.46, metalness: 0.7 });
+  const shroud = new THREE.MeshStandardMaterial({ color: 0x11141a, roughness: 0.62, metalness: 0.55 });
+  const accent = new THREE.MeshStandardMaterial({ color: 0x8c2823, roughness: 0.48, metalness: 0.35 });
   const glass = new THREE.MeshStandardMaterial({
-    color: 0x0a1622, roughness: 0.06, metalness: 0.95,
+    color: 0x0a1622, roughness: 0.05, metalness: 0.96,
     emissive: new THREE.Color(0x0d3346), emissiveIntensity: 0.7,
   });
+  // Bright enough to clear the bloom threshold: the drives are the light
+  // source in every frame the ship is in.
   const engineMat = new THREE.MeshStandardMaterial({
-    color: 0xdcf2ff, emissive: new THREE.Color(0x53b8ff), emissiveIntensity: 1.8, roughness: 0.25, metalness: 0,
+    color: 0xe8f6ff, emissive: new THREE.Color(0x8fd4ff), emissiveIntensity: 2.4, roughness: 0.2, metalness: 0,
   });
+  const markerMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 1.8, 2.4) });
   const plumeMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0.55, 0.82, 1.5), transparent: true, opacity: 0.5,
+    color: new THREE.Color(0.5, 0.86, 1.6), transparent: true, opacity: 0.5,
     depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
   });
-  const owned: THREE.Material[] = [skinMat, panel, shroud, accent, glass, engineMat, plumeMat];
+  const owned: THREE.Material[] = [skinMat, panel, shroud, accent, glass, engineMat, markerMat, plumeMat];
 
-  // ── Fuselage: a six-sided spine, a long nose, a keel under it. ──
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * H, 0.62 * H, 4.4 * H, 6), skinMat);
+  // ── Spine: a narrow six-sided body, a long nose, a keel beneath. ──
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4 * H, 0.56 * H, 4.6 * H, 6), skinMat);
   body.rotation.x = Math.PI / 2;
   body.rotation.z = Math.PI / 6;
-  body.position.z = 0.2 * H;
+  body.position.z = 0.1 * H;
   hull.add(body);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.42 * H, 2.6 * H, 6), skinMat);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.4 * H, 2.8 * H, 6), skinMat);
   nose.rotation.x = Math.PI / 2;
   nose.rotation.z = Math.PI / 6;
-  nose.position.z = 3.7 * H;
+  nose.position.z = 3.8 * H;
   hull.add(nose);
-  const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.03 * H, 0.05 * H, 1.1 * H, 6), shroud);
+  const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.028 * H, 0.05 * H, 1.2 * H, 6), shroud);
   probe.rotation.x = Math.PI / 2;
-  probe.position.z = 5.4 * H;
+  probe.position.z = 5.6 * H;
   hull.add(probe);
-  const keel = new THREE.Mesh(new THREE.BoxGeometry(0.7 * H, 0.22 * H, 3.4 * H), shroud);
-  keel.position.set(0, -0.56 * H, 0.1 * H);
+  const keel = new THREE.Mesh(new THREE.BoxGeometry(0.62 * H, 0.2 * H, 3.6 * H), shroud);
+  keel.position.set(0, -0.5 * H, 0);
   hull.add(keel);
-  const spine = new THREE.Mesh(new THREE.BoxGeometry(0.5 * H, 0.16 * H, 3.0 * H), panel);
-  spine.position.set(0, 0.52 * H, -0.4 * H);
+  const spine = new THREE.Mesh(new THREE.BoxGeometry(0.46 * H, 0.16 * H, 3.2 * H), panel);
+  spine.position.set(0, 0.48 * H, -0.5 * H);
   hull.add(spine);
+  // Formation light on the spine — the one cool marker on a grey hull.
+  const marker = new THREE.Mesh(new THREE.SphereGeometry(0.075 * H, 10, 10), markerMat);
+  marker.position.set(0, 0.6 * H, 0.5 * H);
+  hull.add(marker);
 
-  // ── Canopy: a narrow dark blister in a black coaming. ──
-  const coaming = new THREE.Mesh(new THREE.BoxGeometry(0.7 * H, 0.3 * H, 1.7 * H), shroud);
-  coaming.position.set(0, 0.42 * H, 1.35 * H);
+  // ── Canopy: a narrow dark blister set into a black coaming. ──
+  const coaming = new THREE.Mesh(new THREE.BoxGeometry(0.66 * H, 0.28 * H, 1.8 * H), shroud);
+  coaming.position.set(0, 0.4 * H, 1.5 * H);
   hull.add(coaming);
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.34 * H, 16, 12), glass);
-  canopy.scale.set(0.9, 0.62, 2.2);
-  canopy.position.set(0, 0.56 * H, 1.35 * H);
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.32 * H, 16, 12), glass);
+  canopy.scale.set(0.92, 0.6, 2.4);
+  canopy.position.set(0, 0.54 * H, 1.5 * H);
   hull.add(canopy);
 
-  // ── Tail fins: two small canted stabilisers, not one big sail. ──
-  const finGeom = new THREE.BoxGeometry(0.07 * H, 1.0 * H, 1.1 * H);
+  // ── Tail: two small canted stabilisers off the spine. ──
+  const finGeom = new THREE.BoxGeometry(0.07 * H, 0.95 * H, 1.1 * H);
   for (const side of [1, -1]) {
     const fin = new THREE.Mesh(finGeom, skinMat);
-    fin.position.set(side * 0.42 * H, 0.62 * H, -1.9 * H);
-    fin.rotation.z = side * 0.32;
-    fin.rotation.x = 0.22;
+    fin.position.set(side * 0.38 * H, 0.6 * H, -2.0 * H);
+    fin.rotation.z = side * 0.34;
+    fin.rotation.x = 0.2;
     hull.add(fin);
   }
 
-  const canardGeom = new THREE.BoxGeometry(1.5 * H, 0.07 * H, 0.6 * H);
-  const nacelleGeom = new THREE.CylinderGeometry(0.6 * H, 0.52 * H, 3.4 * H, 18);
-  const intakeGeom = new THREE.CylinderGeometry(0.6 * H, 0.6 * H, 0.34 * H, 18, 1, true);
-  const nozzleGeom = new THREE.CylinderGeometry(0.44 * H, 0.4 * H, 0.16 * H, 18);
-  const ringGeom = new THREE.CylinderGeometry(0.56 * H, 0.56 * H, 0.36 * H, 18, 1, true);
-  const shoulderGeom = new THREE.BoxGeometry(0.16 * H, 0.22 * H, 1.1 * H);
-  const pylonGeom = new THREE.BoxGeometry(0.5 * H, 0.16 * H, 1.4 * H);
-  const wingGeom = new THREE.BoxGeometry(2.9 * H, 0.09 * H, 1.5 * H);
-  const wingEdgeGeom = new THREE.BoxGeometry(2.9 * H, 0.14 * H, 0.16 * H);
-  const podGeom = new THREE.CylinderGeometry(0.11 * H, 0.09 * H, 0.8 * H, 10);
-  const cannonGeom = new THREE.CylinderGeometry(0.06 * H, 0.075 * H, 2.0 * H, 8);
-  const navGeom = new THREE.SphereGeometry(0.09 * H, 10, 10);
+  const canardGeom = new THREE.BoxGeometry(1.3 * H, 0.07 * H, 0.55 * H);
+  const nacelleGeom = new THREE.CylinderGeometry(0.72 * H, 0.64 * H, 3.6 * H, 20);
+  const intakeGeom = new THREE.CylinderGeometry(0.72 * H, 0.72 * H, 0.3 * H, 20, 1, true);
+  const bellGeom = new THREE.CylinderGeometry(0.58 * H, 0.5 * H, 0.18 * H, 20);
+  const ringGeom = new THREE.CylinderGeometry(0.7 * H, 0.7 * H, 0.4 * H, 20, 1, true);
+  const flashGeom = new THREE.BoxGeometry(0.2 * H, 0.34 * H, 1.5 * H);
+  const pylonGeom = new THREE.BoxGeometry(0.75 * H, 0.2 * H, 1.8 * H);
+  const wingGeoms = { 1: wingPanel(1, 1.0 * H, 0.42 * H, 2.7 * H), [-1]: wingPanel(-1, 1.0 * H, 0.42 * H, 2.7 * H) };
+  const wingEdgeGeom = new THREE.BoxGeometry(2.4 * H, 0.16 * H, 0.2 * H);
+  const podGeom = new THREE.CylinderGeometry(0.12 * H, 0.1 * H, 0.9 * H, 10);
+  const cannonGeom = new THREE.CylinderGeometry(0.055 * H, 0.07 * H, 2.0 * H, 8);
+  const navGeom = new THREE.SphereGeometry(0.095 * H, 10, 10);
   const glowTex = softSpriteTexture();
   const glowMats: THREE.SpriteMaterial[] = [];
   const glowSprites: THREE.Sprite[] = [];
   const plumes: THREE.Mesh[] = [];
   const cannonTips: THREE.Object3D[] = [];
   const navMats: THREE.MeshBasicMaterial[] = [];
-  // Forward is +Z with +Y up, so the pilot's left (port) is +X: red to port,
-  // green to starboard, the way every aircraft carries them.
+  // Forward is +Z with +Y up, so the pilot's left (port) is +X.
   const navColour: Record<number, number> = { 1: 0xff3b30, [-1]: 0x30ff6a };
-  const plumeGeom = plumeCone(0.4 * H, 5.2 * H);
+  const plumeGeom = plumeCone(0.5 * H, 6.4 * H);
+  const NX = 1.35 * H; // nacelle centreline — close in beside the spine
 
   for (const side of [1, -1]) {
+    const px = side * NX;
+
     // Canard, well forward, sharply swept.
     const canard = new THREE.Mesh(canardGeom, panel);
-    canard.position.set(side * 1.05 * H, 0.02 * H, 2.35 * H);
-    canard.rotation.y = side * 0.62;
-    canard.rotation.z = -side * 0.12;
+    canard.position.set(side * 0.95 * H, 0.02 * H, 2.5 * H);
+    canard.rotation.y = side * 0.6;
+    canard.rotation.z = -side * 0.14;
     hull.add(canard);
 
-    // Nacelle on a short pylon, with intake, shroud ring and hot nozzle.
-    const px = side * 1.15 * H;
+    // Nacelle on a stub pylon: intake forward, shroud ring and hot bell aft.
     const pylon = new THREE.Mesh(pylonGeom, panel);
-    pylon.position.set(side * 0.78 * H, -0.06 * H, -0.7 * H);
+    pylon.position.set(side * 0.9 * H, -0.04 * H, -0.4 * H);
     hull.add(pylon);
     const nacelle = new THREE.Mesh(nacelleGeom, skinMat);
     nacelle.rotation.x = Math.PI / 2;
-    nacelle.position.set(px, -0.1 * H, -1.1 * H);
+    nacelle.position.set(px, -0.08 * H, -1.1 * H);
     hull.add(nacelle);
     const intake = new THREE.Mesh(intakeGeom, shroud);
     intake.rotation.x = Math.PI / 2;
-    intake.position.set(px, -0.1 * H, 0.5 * H);
+    intake.position.set(px, -0.08 * H, 0.76 * H);
     hull.add(intake);
-    const shoulder = new THREE.Mesh(shoulderGeom, accent);
-    shoulder.position.set(px - side * 0.56 * H, 0.12 * H, 0.1 * H);
-    hull.add(shoulder);
+    // The red flash sits on the outboard shoulder, where the reference
+    // carries it — the only warm colour anywhere on the airframe.
+    const flash = new THREE.Mesh(flashGeom, accent);
+    flash.position.set(px + side * 0.62 * H, 0.06 * H, 0.1 * H);
+    hull.add(flash);
     const ring = new THREE.Mesh(ringGeom, shroud);
     ring.rotation.x = Math.PI / 2;
-    ring.position.set(px, -0.1 * H, -2.72 * H);
+    ring.position.set(px, -0.08 * H, -2.82 * H);
     hull.add(ring);
-    const nozzle = new THREE.Mesh(nozzleGeom, engineMat);
-    nozzle.rotation.x = Math.PI / 2;
-    nozzle.position.set(px, -0.1 * H, -2.84 * H);
-    hull.add(nozzle);
+    const bell = new THREE.Mesh(bellGeom, engineMat);
+    bell.rotation.x = Math.PI / 2;
+    bell.position.set(px, -0.08 * H, -2.94 * H);
+    hull.add(bell);
     const plume = new THREE.Mesh(plumeGeom, plumeMat);
     plume.rotation.x = -Math.PI / 2;
-    plume.position.set(px, -0.1 * H, -2.9 * H);
+    plume.position.set(px, -0.08 * H, -3.0 * H);
     hull.add(plume);
     plumes.push(plume);
     const mat = new THREE.SpriteMaterial({
-      map: glowTex, color: 0x7fd4ff, transparent: true, opacity: 0.75,
+      map: glowTex, color: 0x9adcff, transparent: true, opacity: 0.8,
       depthWrite: false, blending: THREE.AdditiveBlending,
     });
     const sprite = new THREE.Sprite(mat);
-    sprite.position.set(px, -0.1 * H, -3.0 * H);
-    sprite.scale.setScalar(1.9 * H);
+    sprite.position.set(px, -0.08 * H, -3.05 * H);
+    sprite.scale.setScalar(2.4 * H);
     hull.add(sprite);
     glowMats.push(mat);
     glowSprites.push(sprite);
 
-    // Wing: swept back off the nacelle, tipped with the navigation pod.
-    const wing = new THREE.Mesh(wingGeom, skinMat);
-    wing.position.set(side * 2.75 * H, -0.06 * H, -0.9 * H);
-    wing.rotation.y = side * 0.5;
-    wing.rotation.z = -side * 0.16;
-    hull.add(wing);
+    // Wing: rooted on the nacelle and swept hard back. Everything the wing
+    // carries hangs off the same pivot, so the leading edge, the tip pod and
+    // the navigation light stay on the wing however far it is swept.
+    const wingPivot = new THREE.Group();
+    wingPivot.position.set(side * 1.5 * H, -0.04 * H, -0.7 * H);
+    wingPivot.rotation.y = side * 0.48;
+    wingPivot.rotation.z = -side * 0.2;
+    hull.add(wingPivot);
+    const wing = new THREE.Mesh(wingGeoms[side as 1 | -1], skinMat);
+    wingPivot.add(wing);
     const edge = new THREE.Mesh(wingEdgeGeom, panel);
-    edge.position.set(side * 2.9 * H, -0.02 * H, -0.16 * H);
-    edge.rotation.y = side * 0.5;
-    edge.rotation.z = -side * 0.16;
-    hull.add(edge);
+    edge.position.set(side * 1.35 * H, 0.03 * H, 1.0 * H);
+    wingPivot.add(edge);
     const pod = new THREE.Mesh(podGeom, panel);
     pod.rotation.x = Math.PI / 2;
-    pod.position.set(side * 4.1 * H, -0.2 * H, -1.5 * H);
-    hull.add(pod);
+    pod.position.set(side * 2.6 * H, 0, -0.1 * H);
+    wingPivot.add(pod);
     const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(navColour[side]).multiplyScalar(1.6) });
     m.userData.base = navColour[side];
     const light = new THREE.Mesh(navGeom, m);
-    light.position.set(side * 4.1 * H, -0.2 * H, -1.1 * H);
-    hull.add(light);
+    light.position.set(side * 2.6 * H, 0, 0.42 * H);
+    wingPivot.add(light);
     owned.push(m);
     navMats.push(m);
 
     // Chin cannon.
     const cannon = new THREE.Mesh(cannonGeom, shroud);
     cannon.rotation.x = Math.PI / 2;
-    cannon.position.set(side * 0.42 * H, -0.38 * H, 1.9 * H);
+    cannon.position.set(side * 0.38 * H, -0.34 * H, 2.1 * H);
     hull.add(cannon);
     const tip = new THREE.Object3D();
-    tip.position.set(side * 0.42 * H, -0.38 * H, 3.0 * H);
+    tip.position.set(side * 0.38 * H, -0.34 * H, 3.2 * H);
     hull.add(tip);
     cannonTips.push(tip);
   }
 
   const strobeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const strobe = new THREE.Mesh(navGeom, strobeMat);
-  strobe.position.set(0, 0.68 * H, -1.7 * H);
+  strobe.position.set(0, 0.66 * H, -1.8 * H);
   hull.add(strobe);
   owned.push(strobeMat);
 
@@ -861,7 +920,7 @@ function buildInterceptor(): ShipParts {
     depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const plasma = new THREE.Sprite(plasmaMat);
-  plasma.position.set(0, 0, 4.4 * H);
+  plasma.position.set(0, 0, 4.6 * H);
   plasma.scale.setScalar(4 * H);
   hull.add(plasma);
 
@@ -1457,6 +1516,10 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
   let foilT = 0;
   let foilsForced: boolean | null = null;
   let heat = 0;
+  let energy = 1;
+  let boostCharge = 1;
+  let sinceBoost = 99;
+  let odometerKm = 0;
   let shake = 0;
   let crashT = -1;
   let alertHold = 0;
@@ -1505,6 +1568,9 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     hp = MAX_HP;
     sinceHit = 99;
     heat = 0;
+    energy = 1;
+    boostCharge = 1;
+    sinceBoost = 99;
     crashT = -1;
     mode = 'cruise';
     regime = regimes.cruise;
@@ -1676,6 +1742,13 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         }
       }
 
+      // Cannon energy trickles back always; the boost reservoir waits a
+      // beat after the throttle comes off, so a held boost really does run
+      // the tank down instead of topping up under the player's thumb.
+      energy = Math.min(1, energy + ENERGY_REGEN * dt);
+      sinceBoost += dt;
+      if (sinceBoost > BOOST_REGEN_DELAY) boostCharge = Math.min(1, boostCharge + BOOST_REGEN * dt);
+
       // Hull recharges once nobody has landed a hit for a few seconds.
       sinceHit += dt;
       if (hp < MAX_HP && sinceHit > HP_REGEN_DELAY) {
@@ -1833,7 +1906,11 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         // ── Thrust, drag, gravity. Drag is per-frame and frame-rate
         // independent; every body within ten radii pulls with an inverse-
         // square well scaled from its real surface gravity. ──
-        const boost = input.boost && input.thrust > 0;
+        const boost = input.boost && input.thrust > 0 && boostCharge > BOOST_FLOOR;
+        if (boost) {
+          boostCharge = Math.max(0, boostCharge - BOOST_DRAIN * dt);
+          sinceBoost = 0;
+        }
         fwd.set(0, 0, 1).applyQuaternion(me.quaternion);
         vel.addScaledVector(fwd, input.thrust * regime.accel * (boost ? 2 : 1) * dt);
         vel.multiplyScalar(Math.pow(DRAG_PER_FRAME, dt * 60));
@@ -1889,10 +1966,14 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
 
         // ── Lasers: the cannons fire in rotation. The suit is unarmed. ──
         fireAcc -= dt;
-        if (input.fire && fireAcc <= 0 && pilot === 'ship' && cannonTips.length > 0) {
+        if (input.fire && fireAcc <= 0 && pilot === 'ship' && cannonTips.length > 0 && energy >= ENERGY_PER_SHOT) {
           fireAcc = FIRE_INTERVAL;
+          energy -= ENERGY_PER_SHOT;
           fire();
         }
+
+        // The odometer counts the ground the ship has actually covered.
+        odometerKm += vel.length() * dt * KM_PER_SCENE_UNIT;
       }
 
       // ── Nearest body: altitude readout, proximity warning, re-entry. ──
@@ -2116,6 +2197,9 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       tel.mode = mode;
       tel.foilsOpen = foilT > 0.5;
       tel.heat = heat;
+      tel.odometerKm = odometerKm;
+      tel.energy = energy;
+      tel.boostCharge = boostCharge;
       tel.alert = alert;
       tel.jumpPhase = jumpPhase;
       tel.jumpT = jumpPhase === 'charge' ? jumpT / JUMP_CHARGE : jumpPhase === 'travel' ? Math.min(1, jumpT / JUMP_TRAVEL) : 0;

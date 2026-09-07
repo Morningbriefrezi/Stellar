@@ -817,6 +817,13 @@
   --deck-warn: #ffb347;
   --deck-bad: #ff5a5a;
   --deck-jump: #bcd0ff;
+  /* The console reads as an instrument panel, not as app chrome: a cold
+     blue on near-black glass, hairlines rather than borders. */
+  --hud-blue: #3fa9ff;
+  --hud-blue-soft: rgba(120, 174, 232, 0.34);
+  --hud-ink: #eaf3ff;
+  --hud-dim: rgba(184, 212, 244, 0.72);
+  --hud-glass: rgba(6, 16, 32, 0.72);
 }
 
 .flight-hud__panel-label {
@@ -879,12 +886,26 @@
   -webkit-tap-highlight-color: transparent;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.flight-hud__ship[data-active='true'],
-.flight-hud__mode[data-active='true'] {
+.flight-hud__ship[data-active='true'] {
   border-color: rgba(94, 234, 212, 0.7);
   color: #fff;
   background: rgba(94, 234, 212, 0.1);
 }
+.flight-hud__mode {
+  height: 30px;
+  justify-content: flex-end;
+  border-color: var(--hud-blue-soft);
+  background: var(--hud-glass);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: var(--hud-dim);
+}
+.flight-hud__mode[data-active='true'] {
+  border-color: var(--hud-blue);
+  color: var(--hud-ink);
+  background: rgba(63, 169, 255, 0.16);
+}
+.flight-hud__mode[data-active='true'] > .flight-hud__led { background: var(--hud-blue); }
 .flight-hud__mode--jump[data-active='true'] {
   border-color: rgba(188, 208, 255, 0.75);
   background: rgba(188, 208, 255, 0.12);
@@ -969,12 +990,27 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
 }
 
 .flight-hud__exit {
+  pointer-events: auto;
   position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  left: max(10px, env(safe-area-inset-left));
-  z-index: 2;
-  border-radius: 6px;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 4;
+  min-height: 0;
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid var(--hud-blue-soft);
+  background: var(--hud-glass);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: var(--hud-ink);
+  cursor: pointer;
 }
+.flight-hud__exit::before { content: none; }
+.flight-hud__exit:hover { border-color: var(--hud-blue); }
 
 /* The dock used to be one row that ran off the side of a phone, clipping the
    last speed chip and the settings button. Below 680px the speed chips take
@@ -1085,161 +1121,293 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
   opacity: 0;
 }
 
-/* ── Deck: the gauge, four readouts, two status lamps ── */
-.flight-hud__deck {
+/* ── Heading block, top left: where you are, how high, how fast ── */
+.flight-hud__head {
   position: absolute;
-  top: calc(max(10px, env(safe-area-inset-top)) + 58px);
-  left: max(12px, env(safe-area-inset-left));
+  top: max(12px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
+  gap: 3px;
+  padding-left: 11px;
+  border-left: 2px solid var(--hud-blue);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
+}
+.flight-hud__place {
+  font-size: 14px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hud-ink);
+  white-space: nowrap;
+}
+.flight-hud__headrow {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+.flight-hud__headrow--minor { margin-top: 2px; opacity: 0.75; }
+.flight-hud__headkey {
+  min-width: 26px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+}
+.flight-hud__headval {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--hud-ink);
+  font-variant-numeric: tabular-nums;
+}
+.flight-hud__foils {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+}
+.flight-hud__foils[data-on='true'] { color: var(--hud-ink); }
+.flight-hud__foils[data-on='true'] > .flight-hud__led { background: var(--hud-blue); }
+.flight-hud__pilot {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--hud-blue-soft);
+  border-radius: 4px;
+  background: var(--hud-glass);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hud-ink);
+  max-width: 190px;
+}
+.flight-hud__pilot[hidden] { display: none; }
+
+/* ── Target brackets: a reticle and a name, parked on the projected
+   position of something worth naming out of the canopy. ── */
+.flight-hud__marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--deck-line);
-  border-radius: 6px;
-  background: var(--deck-bg);
-  width: 186px;
+  margin: -11px 0 0 -11px;
+  will-change: transform;
 }
-.flight-hud__gauge {
+.flight-hud__marker[hidden] { display: none; }
+.flight-hud__marker-box {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  /* Four corners, no full box — a bracket, the way a sight reads. */
+  background:
+    linear-gradient(var(--hud-ink), var(--hud-ink)) 0 0 / 7px 1px no-repeat,
+    linear-gradient(var(--hud-ink), var(--hud-ink)) 0 0 / 1px 7px no-repeat,
+    linear-gradient(var(--hud-ink), var(--hud-ink)) 100% 0 / 7px 1px no-repeat,
+    linear-gradient(var(--hud-ink), var(--hud-ink)) 100% 0 / 1px 7px no-repeat,
+    linear-gradient(var(--hud-ink), var(--hud-ink)) 0 100% / 7px 1px no-repeat,
+    linear-gradient(var(--hud-ink), var(--hud-ink)) 0 100% / 1px 7px no-repeat,
+    linear-gradient(var(--hud-ink), var(--hud-ink)) 100% 100% / 7px 1px no-repeat,
+    linear-gradient(var(--hud-ink), var(--hud-ink)) 100% 100% / 1px 7px no-repeat;
+  opacity: 0.85;
+}
+.flight-hud__marker-name {
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-ink);
+  white-space: nowrap;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
+}
+
+/* ── The console: compass, odometer, speed dial, three bars ── */
+.flight-hud__console {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 6px);
+  transform: translateX(-50%);
+  width: min(680px, calc(100vw - 24px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.flight-hud__compass {
+  width: 88px;
+  height: 88px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+/* Angled corners and a hairline: the panel is cut, not rounded. */
+.flight-hud__panel {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.15fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border: 1px solid var(--hud-blue-soft);
+  border-radius: 4px;
+  background: var(--hud-glass);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  clip-path: polygon(
+    0 22%, 5% 0, 95% 0, 100% 22%,
+    100% 78%, 96% 100%, 4% 100%, 0 78%
+  );
+}
+.flight-hud__cap {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+  white-space: nowrap;
+}
+.flight-hud__unit {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--hud-dim);
+}
+.flight-hud__odo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.flight-hud__odo-read {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+.flight-hud__odo-value {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--hud-ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.flight-hud__dial {
   position: relative;
-  width: 150px;
-  height: 150px;
-  align-self: center;
+  width: 104px;
+  height: 104px;
+  /* The dial breaks the top edge of the panel, the way a real instrument
+     stands proud of its bezel. */
+  margin: -22px 2px -6px;
+  flex-shrink: 0;
 }
-.flight-hud__gauge canvas { display: block; }
-.flight-hud__gauge-read {
+.flight-hud__dial canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.flight-hud__dial-read {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
-  padding-top: 6px;
+  gap: 2px;
+  padding-top: 4px;
 }
-.flight-hud__gauge-speed {
+.flight-hud__dial-value {
   font-size: 22px;
   line-height: 1;
   color: #fff;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
-.flight-hud__gauge-unit {
-  font-size: 9px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--deck-dim);
-}
-.flight-hud__gauge-c {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--deck-on);
-  font-variant-numeric: tabular-nums;
-}
-.flight-hud__readout {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  column-gap: 10px;
-  row-gap: 3px;
-  align-items: baseline;
-  padding-top: 8px;
-  border-top: 1px solid var(--deck-line);
-}
-.flight-hud__label {
-  font-size: 9px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--deck-dim);
-}
-.flight-hud__value {
-  font-size: 12px;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.flight-hud__status {
+.flight-hud__stats {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--deck-line);
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
 }
 .flight-hud__stat {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 14px auto minmax(28px, 1fr) 34px;
   align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--deck-dim);
+  gap: 7px;
 }
-.flight-hud__stat[data-on='true'] { color: #fff; }
-.flight-hud__pilot {
-  padding: 6px 8px;
-  border: 1px solid rgba(94, 234, 212, 0.5);
-  border-radius: 4px;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--deck-on);
-  text-align: center;
+.flight-hud__stat-icon {
+  display: inline-flex;
+  color: var(--hud-dim);
 }
-.flight-hud__pilot[hidden] { display: none; }
+.flight-hud__stat-name {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+  white-space: nowrap;
+}
+.flight-hud__stat-track {
+  height: 5px;
+  border-radius: 1px;
+  background: rgba(120, 174, 232, 0.18);
+  overflow: hidden;
+}
+.flight-hud__stat-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 1px;
+  background: var(--hud-blue);
+  transition: width 160ms ease-out;
+}
+.flight-hud__stat-fill[data-low='true'] { background: #ff6a5a; }
+.flight-hud__stat-pct {
+  font-size: 11px;
+  text-align: right;
+  color: var(--hud-ink);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── Camera distance: pull the chase view in, push it out ── */
 .flight-hud__cam {
   pointer-events: auto;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--deck-line);
-}
-.flight-hud__cam-label {
-  font-size: 9px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--deck-dim);
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
 }
 .flight-hud__cam-btn {
   min-height: 0;
   width: 30px;
-  height: 26px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  border: 1px solid var(--deck-line);
-  background: rgba(248, 244, 236, 0.06);
-  color: rgba(248, 244, 236, 0.85);
+  border-radius: 5px;
+  border: 1px solid var(--hud-blue-soft);
+  background: var(--hud-glass);
+  color: var(--hud-ink);
   cursor: pointer;
 }
 .flight-hud__cam-btn::before { content: none; }
-.flight-hud__cam-btn:active { background: rgba(248, 244, 236, 0.2); }
+.flight-hud__cam-btn:active { background: rgba(63, 169, 255, 0.28); }
 
-.flight-hud__radar {
-  position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  border-radius: 50%;
-}
-
-/* ── Regime selector, top centre ── */
+/* ── Regime selector: a short column under the pause key ── */
 .flight-hud__modes {
   position: absolute;
   z-index: 3;
-  top: max(10px, env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
+  top: calc(max(12px, env(safe-area-inset-top)) + 52px);
+  right: max(12px, env(safe-area-inset-right));
   display: flex;
+  flex-direction: column;
   gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--deck-line);
-  border-radius: 6px;
-  background: var(--deck-bg);
   pointer-events: auto;
+}
+.flight-hud__mode-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* Flight alerts — proximity, re-entry, mass lock, the jump itself. */
@@ -1288,48 +1456,24 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
   background: var(--deck-jump);
 }
 
-/* ── Hull ── */
-.flight-hud__hull {
+.flight-hud__hint {
   position: absolute;
   left: 50%;
-  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 12px);
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 104px);
   transform: translateX(-50%);
-  width: min(260px, 60vw);
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  align-items: center;
-}
-.flight-hud__hull-row {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-}
-.flight-hud__hp {
-  width: 100%;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(248, 244, 236, 0.14);
-  overflow: hidden;
-}
-.flight-hud__hp-fill {
-  height: 100%;
-  width: 100%;
-  background: var(--deck-on);
-  transition: width 160ms ease-out;
-}
-.flight-hud__hint {
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(248, 244, 236, 0.45);
+  color: rgba(184, 212, 244, 0.42);
   text-align: center;
+  max-width: min(680px, calc(100vw - 24px));
 }
 
-/* From the seat the dashboard carries velocity, altitude, hull and heat, so
-   the floating deck and hull strip come off the glass. */
-.flight-hud[data-view='cockpit'] .flight-hud__hull,
-.flight-hud[data-view='cockpit'] .flight-hud__deck { display: none; }
+/* From the seat the dashboard carries velocity, altitude, shield and heat,
+   so the console and the heading block come off the glass. */
+.flight-hud[data-view='cockpit'] .flight-hud__console,
+.flight-hud[data-view='cockpit'] .flight-hud__hint,
+.flight-hud[data-view='cockpit'] .flight-hud__head { display: none; }
 
 /* The wreck: a dark wash, the verdict, the respawn count. */
 .flight-hud__crash {
@@ -1365,9 +1509,10 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
   z-index: 1;
   left: 0;
   top: 0;
-  bottom: 0;
   width: 52%;
-  height: 100%;
+  /* A canvas is a replaced element — top+bottom will not stretch it, it
+     just keeps its intrinsic 150px. The height has to be spelled out. */
+  height: calc(100% - (max(10px, env(safe-area-inset-bottom)) + 104px));
   pointer-events: auto;
   touch-action: none;
 }
@@ -1397,9 +1542,11 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
   justify-content: center;
   text-align: center;
   line-height: 1.1;
-  background: var(--deck-bg);
-  border: 1px solid var(--deck-line);
-  color: rgba(248, 244, 236, 0.85);
+  background: var(--hud-glass);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--hud-blue-soft);
+  color: var(--hud-ink);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
   transition: transform 90ms ease, background 90ms ease;
 }
@@ -1412,7 +1559,7 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
 }
 .flight-hud__fire {
   right: max(18px, env(safe-area-inset-right));
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 10px);
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 112px);
   width: 88px;
   height: 88px;
   border-color: rgba(255, 90, 90, 0.85);
@@ -1426,7 +1573,7 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
 }
 .flight-hud__boost {
   right: calc(max(18px, env(safe-area-inset-right)) + 96px);
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 36px);
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 138px);
   width: 70px;
   height: 70px;
   border-color: rgba(94, 234, 212, 0.8);
@@ -1435,14 +1582,14 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
 .flight-hud__boost:active { background: rgba(94, 234, 212, 0.35); }
 .flight-hud__brake {
   right: max(18px, env(safe-area-inset-right));
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 112px);
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 214px);
   width: 62px;
   height: 62px;
 }
 .flight-hud__brake:active { background: rgba(248, 244, 236, 0.22); }
 .flight-hud__eject {
   right: calc(max(18px, env(safe-area-inset-right)) + 96px);
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 120px);
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 222px);
   width: 70px;
   height: 44px;
   border-color: rgba(255, 179, 71, 0.75);
@@ -1453,7 +1600,7 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
 /* View toggle sits beside eject. */
 .flight-hud__view {
   right: calc(max(18px, env(safe-area-inset-right)) + 176px);
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 120px);
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 222px);
   width: 62px;
   height: 44px;
 }
@@ -1464,7 +1611,7 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
   position: absolute;
   z-index: 3;
   right: max(12px, env(safe-area-inset-right));
-  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 12px);
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 116px);
   width: min(360px, calc(100vw - 24px));
   padding: 10px 12px;
   border: 1px solid rgba(94, 234, 212, 0.55);
@@ -1495,134 +1642,94 @@ body[data-solar-hangar='1'] .solar-system__viewport-hint { opacity: 0; }
   animation: flight-alert-blink 500ms steps(2, end) infinite;
 }
 
-/* ── Phone layout: exit and radar own the top corners, the regime keys
-   stack under the radar, the deck keeps only what steering needs. ── */
+/* ── Phone layout: the console keeps every part the reference has, just
+   tighter — the compass, the odometer, the dial and the three bars sit on
+   one strip along the bottom, and the thumb keys stack above it. ── */
 @media (max-width: 680px) {
-  /* The deck shrinks to a slim strip: a small dial, two lines of numbers,
-     and the status lamps. Everything else is either on a key or implied. */
-  /* On a phone the deck is one shallow strip along the top: speed, what you
-     are near, how high, and the camera keys. The dial, the light-speed
-     fraction, the regime and system rows all live elsewhere on this screen
-     already — a panel repeating them ate a third of the sky. */
-  .flight-hud__deck {
-    top: calc(max(10px, env(safe-area-inset-top)) + 48px);
-    flex-direction: row;
-    align-items: center;
-    width: auto;
-    max-width: calc(100vw - 104px);
-    padding: 4px 8px;
-    gap: 8px;
-    border-radius: 8px;
-  }
-  .flight-hud__gauge { width: auto; height: auto; align-self: auto; }
-  .flight-hud__gauge canvas { display: none; }
-  .flight-hud__gauge-read {
-    position: static;
-    flex-direction: row;
-    align-items: baseline;
-    gap: 3px;
-    padding-top: 0;
-  }
-  .flight-hud__gauge-speed { font-size: 14px; }
-  .flight-hud__gauge-unit { font-size: 8px; letter-spacing: 0.08em; }
-  .flight-hud__gauge-c { display: none; }
-  .flight-hud__readout {
-    display: flex;
-    align-items: baseline;
+  .flight-hud__console {
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 4px);
+    width: calc(100vw - 16px);
     gap: 6px;
-    padding: 0 0 0 8px;
-    border-top: none;
-    border-left: 1px solid var(--deck-line);
-    min-width: 0;
   }
-  .flight-hud__label { font-size: 8px; letter-spacing: 0.1em; }
-  .flight-hud__value { font-size: 10px; max-width: 68px; }
-  .flight-hud__status { display: none; }
-  .flight-hud__pilot {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    white-space: nowrap;
-    font-size: 8px;
-    padding: 4px 6px;
-    background: var(--deck-bg);
+  .flight-hud__compass { width: 62px; height: 62px; }
+  .flight-hud__panel {
+    grid-template-columns: minmax(0, 0.74fr) auto minmax(0, 1.2fr);
+    gap: 6px;
+    padding: 7px 8px;
   }
-  /* Regime, system and the two labels the values speak for themselves. */
-  .flight-hud__readout > :nth-child(1),
-  .flight-hud__readout > :nth-child(2),
-  .flight-hud__readout > :nth-child(3),
-  .flight-hud__readout > :nth-child(5),
-  .flight-hud__readout > :nth-child(7),
-  .flight-hud__readout > :nth-child(8) { display: none; }
-  .flight-hud__cam {
-    padding: 0 0 0 8px;
-    border-top: none;
-    border-left: 1px solid var(--deck-line);
+  .flight-hud__cap { font-size: 8px; letter-spacing: 0.14em; }
+  .flight-hud__odo-value { font-size: 14px; }
+  .flight-hud__dial { width: 74px; height: 74px; margin: -16px 0 -4px; }
+  .flight-hud__dial-value { font-size: 16px; }
+  .flight-hud__unit { font-size: 8px; }
+  .flight-hud__stats { gap: 4px; }
+  .flight-hud__stat {
+    grid-template-columns: 11px 40px minmax(16px, 1fr) 26px;
     gap: 4px;
   }
-  .flight-hud__cam-label { display: none; }
-  .flight-hud__cam-btn { width: 26px; height: 24px; }
-  .flight-hud__hull {
-    left: max(12px, env(safe-area-inset-left));
-    right: auto;
-    bottom: auto;
-    top: calc(max(10px, env(safe-area-inset-top)) + 84px);
-    transform: none;
-    width: 108px;
-    align-items: flex-start;
-  }
-  .flight-hud__hull-row { align-self: flex-start; }
-  .flight-hud__modes {
-    top: calc(max(10px, env(safe-area-inset-top)) + 84px);
-    left: auto;
-    right: max(10px, env(safe-area-inset-right));
-    transform: none;
-    flex-direction: column;
-  }
-  .flight-hud__modes { padding: 3px; gap: 3px; border-radius: 10px; }
-  .flight-hud__mode { height: 30px; padding: 0 8px; font-size: 9px; letter-spacing: 0.1em; }
+  .flight-hud__stat-name { font-size: 7px; letter-spacing: 0.04em; }
+  .flight-hud__stat-pct { font-size: 9px; }
+  .flight-hud__stat-track { height: 4px; }
+  .flight-hud__cam { flex-direction: column; }
+  .flight-hud__cam-btn { width: 26px; height: 26px; }
+
+  .flight-hud__place { font-size: 12px; letter-spacing: 0.18em; }
+  .flight-hud__headkey { font-size: 9px; min-width: 22px; }
+  .flight-hud__headval { font-size: 11px; }
+  .flight-hud__marker-name { font-size: 12px; }
+
+  .flight-hud__modes { top: calc(max(12px, env(safe-area-inset-top)) + 50px); }
+  .flight-hud__mode { height: 28px; padding: 0 8px; font-size: 9px; letter-spacing: 0.1em; }
   .flight-hud__mode .flight-hud__led { width: 5px; height: 5px; }
+
   /* Thumb keys: still comfortably tappable, no longer the whole corner. */
-  .flight-hud__fire { width: 66px; height: 66px; }
+  .flight-hud__pad { height: calc(100% - (max(8px, env(safe-area-inset-bottom)) + 78px)); }
+  .flight-hud__fire {
+    width: 66px;
+    height: 66px;
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 86px);
+  }
   .flight-hud__fire-dot { width: 22px; height: 22px; }
   .flight-hud__boost {
     right: calc(max(18px, env(safe-area-inset-right)) + 74px);
-    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 30px);
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 108px);
     width: 54px;
     height: 54px;
     font-size: 9px;
   }
   .flight-hud__brake {
-    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 86px);
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 162px);
     width: 50px;
     height: 50px;
     font-size: 9px;
   }
   .flight-hud__eject {
     right: calc(max(18px, env(safe-area-inset-right)) + 74px);
-    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 92px);
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 170px);
     width: 54px;
     height: 36px;
     font-size: 9px;
   }
   .flight-hud__view {
     right: calc(max(18px, env(safe-area-inset-right)) + 136px);
-    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 92px);
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 170px);
     width: 50px;
     height: 36px;
     font-size: 9px;
   }
-  .flight-hud__radar { width: 60px !important; height: 60px !important; }
   .flight-hud__comms {
     right: max(12px, env(safe-area-inset-right));
     left: max(12px, env(safe-area-inset-left));
     width: auto;
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 190px);
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 216px);
     font-size: 10px;
   }
   .flight-hud__alert {
-    top: max(10px, env(safe-area-inset-top));
-    max-width: calc(100vw - 210px);
+    top: calc(max(12px, env(safe-area-inset-top)) + 154px);
+    left: auto;
+    right: max(12px, env(safe-area-inset-right));
+    transform: none;
+    max-width: calc(100vw - 130px);
     padding: 6px 10px;
     font-size: 10px;
     white-space: normal;

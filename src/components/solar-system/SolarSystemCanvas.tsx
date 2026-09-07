@@ -57,6 +57,7 @@ import { makeSunSurface } from '@/lib/solar-system/sun-surface';
 import { makePostFx } from '@/lib/solar-system/post-processing';
 import {
   createPlayerShip,
+  MARKER_MAX,
   type FlightAnchor,
   type FlightBody,
   type FlightSession,
@@ -1106,6 +1107,40 @@ export function SolarSystemCanvas({
         world.jump.name = 'sol';
       }
     };
+    /** Screen brackets for what is worth naming out of the canopy: bodies
+     *  ahead of the ship, close enough to matter, and small enough on screen
+     *  that a label tells you something. Anything that already fills the
+     *  frame is obvious without a tag. */
+    const markTargets = (
+      tel: FlightSession['telemetry'],
+      w: FlightWorld,
+      cam: THREE.PerspectiveCamera,
+    ) => {
+      const width = mount.clientWidth;
+      const height = mount.clientHeight;
+      let n = 0;
+      tel.markerIds.length = 0;
+      for (const b of w.bodies) {
+        if (n >= MARKER_MAX || b.destroyed) continue;
+        const dist = cam.position.distanceTo(b.position);
+        if (dist > b.radius * 260) continue;
+        // How much of the frame height the body covers. Anything filling
+        // more than a small part of it needs no name — you are looking at it.
+        const halfFov = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
+        const screenFrac = b.radius / Math.max(dist, 1e-9) / halfFov;
+        if (screenFrac > 0.13) continue;
+        const p = projectToScreen(b.position, cam, width, height);
+        // The name runs to the right of the bracket, so the right margin has
+        // to be wide enough to hold it rather than clip it at the edge.
+        if (!p || p.x < 40 || p.x > width - 150 || p.y < 40 || p.y > height - 120) continue;
+        tel.markers[n * 2] = p.x;
+        tel.markers[n * 2 + 1] = p.y;
+        tel.markerIds.push(b.id);
+        n += 1;
+      }
+      tel.markerCount = n;
+    };
+
     // Epoch anchor for shader time uniforms — keeps the float32 value the GPU
     // sees small enough to stay precise across the ±2 year scrub range.
     const baseEpochMs = epochRef.current;
@@ -1180,6 +1215,7 @@ export function SolarSystemCanvas({
         syncWorld(ship.group.position, earthPos, now);
         ship.update(dtSec, (now - t0) / 1000, camera, aliens, world);
         alphaCen.update(dtSec, camera.position, camera);
+        markTargets(session!.telemetry, world, camera);
       } else if (focus && meshById.has(focus)) {
         vTarget.copy(meshById.get(focus)!.position);
         const pr = worldRadiusForBody(focus);
@@ -1219,6 +1255,9 @@ export function SolarSystemCanvas({
           if (earthSats) {
             earthSats.group.position.copy(earthMesh.position);
             earthSats.update(epochRef.current, earthMesh.position);
+            // In flight the deck brackets everything worth naming; the
+            // sprite labels would double up on them.
+            earthSats.setLabels(!ship);
           }
         }
       }

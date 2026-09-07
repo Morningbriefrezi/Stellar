@@ -1887,6 +1887,9 @@ export interface EarthSatellitesHandle {
   /** `earthPos` — Earth's heliocentric scene position (fixes JWST on the
    *  anti-sunward Sun–Earth line; the Sun sits at the scene origin). */
   update: (epochMs: number, earthPos: THREE.Vector3) => void;
+  /** In Explore Mode the flight deck draws its own target brackets, so the
+   *  sprite labels come off rather than doubling up on them. */
+  setLabels: (visible: boolean) => void;
   dispose: () => void;
 }
 
@@ -2083,6 +2086,9 @@ export function makeEarthSatellites(earthRadius: number, lite: boolean): EarthSa
     group,
     station: stationRec.node,
     stationRadius: b * 1.3,
+    setLabels(visible: boolean) {
+      for (const m of labelMats) m.visible = visible;
+    },
     update(epochMs: number, earthPos: THREE.Vector3) {
       for (const { node, spec } of recs) {
         if (spec.kind === 'jwst') {
