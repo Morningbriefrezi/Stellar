@@ -77,7 +77,7 @@ interface Palette {
 function palette(accentHex: number, driveHex: number): Palette {
   const graphite = new THREE.MeshStandardMaterial({ color: 0x3a414b, roughness: 0.55, metalness: 0.5 });
   const titanium = new THREE.MeshStandardMaterial({ color: 0x7d8692, roughness: 0.42, metalness: 0.72 });
-  const panel = new THREE.MeshStandardMaterial({ color: 0xd9d5cc, roughness: 0.66, metalness: 0.18 });
+  const panel = new THREE.MeshStandardMaterial({ color: 0x9099a3, roughness: 0.6, metalness: 0.3 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x0f1216, roughness: 0.72, metalness: 0.45 });
   const accent = new THREE.MeshStandardMaterial({
     color: accentHex, roughness: 0.5, metalness: 0.2,

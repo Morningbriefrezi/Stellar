@@ -43,16 +43,12 @@ export function stepTarget(cands: TargetCandidate[], currentId: string, from: TH
 /** Project a world point onto the glass; off-frame targets become an arrow
  *  on the frame's edge pointing the way. */
 export function projectTarget(pos: THREE.Vector3, camera: THREE.Camera, out: TargetScreen) {
-  proj.copy(pos).project(camera);
-  const behind = proj.z > 1;
-  let x = proj.x;
-  let y = proj.y;
-  if (behind) {
-    // Behind the lens the projection folds over; flip it back so the arrow
-    // still points the shorter way round.
-    x = -x;
-    y = -y;
-  }
+  proj.copy(pos).applyMatrix4(camera.matrixWorldInverse);
+  const behind = proj.z >= 0;
+  proj.z = -Math.max(Math.abs(proj.z), 1e-6);
+  proj.applyMatrix4(camera.projectionMatrix);
+  const x = proj.x;
+  const y = proj.y;
   if (!behind && Math.abs(x) <= EDGE && Math.abs(y) <= EDGE) {
     out.x = x;
     out.y = y;
@@ -63,7 +59,7 @@ export function projectTarget(pos: THREE.Vector3, camera: THREE.Camera, out: Tar
   const len = Math.hypot(x, y) || 1;
   let ex = x / len;
   let ey = y / len;
-  if (behind && len < 0.05) {
+  if (behind && Math.hypot(x, y) < 0.05) {
     ex = 0;
     ey = -1;
   }

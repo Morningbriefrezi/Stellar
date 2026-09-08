@@ -1125,13 +1125,15 @@
       }
     },
     "flight": {
+      "pause": "Pause",
+      "resume": "Resume",
       "explore": "Explore",
       "exit": "Exit flight mode",
       "launch": "Launch",
       "speed": "Speed",
       "kills": "Kills",
       "hull": "Hull",
-      "hint": "W S thrust · mouse steer · A D yaw · Q E roll · Space fire · Shift boost · 1 2 3 regime · H jump · T target · G align · N targets · Z assist · F wings · V eject · C view · Esc exit",
+      "hint": "W S thrust · mouse steer · A D yaw · Q E roll · Space fire · Shift boost · 1 2 3 regime · H jump · T target · G align · Z assist · F wings · V eject · C view · Esc exit",
       "view": "View",
       "camera": "Camera",
       "camIn": "Camera closer",

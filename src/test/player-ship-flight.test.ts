@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
   createFlightSession,
@@ -10,6 +10,8 @@ import {
   type FlightWorld,
   type PlayerShipHandle,
 } from '@/lib/solar-system/player-ship';
+import { projectTarget } from '@/lib/solar-system/flight-targeting';
+import { makeMissionTracker } from '@/lib/solar-system/flight-missions';
 import type { AlienHandle } from '@/lib/solar-system/aliens';
 
 const U = FLIGHT_UNIT;
@@ -87,6 +89,8 @@ beforeEach(() => {
   clock = 0;
 });
 
+afterEach(() => ship.dispose());
+
 describe('speed regimes', () => {
   it('cruise settles at its ceiling and reads out in km/s and c', () => {
     faceAway();
@@ -94,8 +98,8 @@ describe('speed regimes', () => {
     seconds(4);
     const tel = session.telemetry;
     expect(tel.mode).toBe('cruise');
-    expect(tel.speed).toBeCloseTo(2.5, 1);
-    expect(tel.speedKmS).toBeCloseTo(2.5 * U * KM_PER_SCENE_UNIT, 0);
+    expect(tel.speed).toBeCloseTo(0.6, 1);
+    expect(tel.speedKmS).toBeCloseTo(0.6 * U * KM_PER_SCENE_UNIT, 0);
     expect(tel.speedC).toBeCloseTo(tel.speedKmS / 299_792.458, 6);
   });
 
@@ -105,13 +109,13 @@ describe('speed regimes', () => {
     session.input.thrust = 1;
     // The drive re-tunes over a second or so, and Earth's well throttles
     // the fast drive until the ship is clear of it.
-    seconds(8);
+    seconds(16);
     expect(session.telemetry.mode).toBe('fast');
-    expect(session.telemetry.speed).toBeCloseTo(22, 0);
+    expect(session.telemetry.speed).toBeCloseTo(12, 0);
     session.input.boost = true;
     seconds(4);
     expect(session.telemetry.boost).toBe(true);
-    expect(session.telemetry.speed).toBeCloseTo(34, 0);
+    expect(session.telemetry.speed).toBeCloseTo(20, 0);
   });
 
   it('turns slower at speed', () => {
@@ -144,7 +148,7 @@ describe('hyperdrive', () => {
     expect(session.telemetry.jumpPhase).toBe('none');
   });
 
-  it('charges, travels to the latched destination and arrives at rest', () => {
+  it('charges, travels to the latched destination and arrives coasting', () => {
     const destination = world.jump.position.clone();
     session.input.modeRequest = 'jump';
     step(1);
@@ -166,7 +170,7 @@ describe('hyperdrive', () => {
     expect(session.telemetry.systemName).toBe('alphaCentauri');
     expect(session.telemetry.mode).toBe('cruise');
     expect(ship.group.position.distanceTo(destination)).toBeLessThan(1e-6);
-    expect(session.telemetry.speed).toBe(0);
+    expect(session.telemetry.speed).toBeCloseTo(0.18, 5);
     expect(session.telemetry.alert).toBe('arrived');
     expect(session.telemetry.systemName).toBe('alphaCentauri');
     expect(heading().angleTo(new THREE.Vector3(-1, -1, 0).normalize())).toBeLessThan(0.01);
@@ -218,9 +222,9 @@ describe('gravity and solid bodies', () => {
     // Still climbing out of Earth's well: well short of the fast ceiling.
     expect(session.telemetry.alert).toBe('gravity');
     expect(session.telemetry.speed).toBeLessThan(18);
-    seconds(6);
+    seconds(14);
     expect(session.telemetry.alert).not.toBe('gravity');
-    expect(session.telemetry.speed).toBeCloseTo(22, 0);
+    expect(session.telemetry.speed).toBeCloseTo(12, 0);
   });
 
   it('flight assist off keeps momentum and needs counter-thrust', () => {
@@ -280,9 +284,9 @@ describe('gravity and solid bodies', () => {
     session.input.modeRequest = 'fast';
     session.input.boost = true;
     session.input.thrust = 1;
-    // At the frame cap the ship covers ~0.02 per step — five pebble diameters.
+    // At the frame cap the ship covers more than a pebble diameter per step.
     let crashed = false;
-    for (let i = 0; i < 30 && !crashed; i++) {
+    for (let i = 0; i < 120 && !crashed; i++) {
       step(1, 0.1);
       crashed = session.telemetry.crashed;
     }
@@ -302,7 +306,7 @@ describe('EVA and stations', () => {
     session.input.thrust = 1;
     session.input.fire = true;
     seconds(9);
-    expect(session.telemetry.speed).toBeCloseTo(0.5, 1);
+    expect(session.telemetry.speed).toBeCloseTo(0.16, 1);
     expect(session.telemetry.foilsOpen).toBe(false);
     expect(session.telemetry.canBoard).toBe(false);
     session.input.eject = true;
@@ -331,26 +335,34 @@ describe('EVA and stations', () => {
     other.group.lookAt(new THREE.Vector3(1, 0, 10));
     fast.input.thrust = 1;
     for (let i = 0; i < 240; i++) other.update(DT, i * DT, camera, aliens, world);
-    expect(fast.telemetry.speed).toBeCloseTo(3.0, 1);
+    expect(fast.telemetry.speed).toBeCloseTo(0.72, 1);
     other.dispose();
   });
 
   it('ramming a station destroys both; shots wear one down', () => {
     const iss = body('iss', 1, 0.0015, 0.11, 0, 1);
     iss.kind = 'station';
-    iss.position.set(1, 0, EARTH_R * 5 + 0.02);
+    // Close enough that a cruise burn reaches it before Earth's pull bends
+    // the run: the drive is paced against the planets, not open space.
+    iss.position.set(1, 0, EARTH_R * 5 + 0.004);
     world.bodies.push(iss);
     ship.group.lookAt(iss.position);
     session.input.thrust = 1;
-    seconds(3);
-    expect(session.telemetry.crashed).toBe(true);
+    // Stop at the impact: hold on any longer and the wreck has already
+    // respawned by the time the assertion runs.
+    let hit = false;
+    for (let i = 0; i < 900 && !hit; i++) {
+      step(1);
+      hit = session.telemetry.crashed;
+    }
+    expect(hit).toBe(true);
     expect(iss.destroyed).toBe(true);
   });
 
   it('bolts spark off bodies and take a station apart', () => {
     const iss = body('iss', 1, 0.0015, 0.11, 0, 1);
     iss.kind = 'station';
-    iss.position.set(1, 0, EARTH_R * 5 + 0.03);
+    iss.position.set(1, 0, EARTH_R * 5 + 0.012);
     world.bodies.push(iss);
     ship.group.lookAt(iss.position);
     session.input.fire = true;
@@ -438,5 +450,107 @@ describe('shields, hull and wings', () => {
     session.input.foilsToggle = true;
     seconds(2);
     expect(session.telemetry.foilsOpen).toBe(true);
+  });
+});
+
+
+describe('flight review regressions', () => {
+  it('pauses flight without resetting position or telemetry', () => {
+    world.bodies = [];
+    session.input.thrust = 1;
+    seconds(1);
+    const position = ship.group.position.clone();
+    const speed = session.telemetry.speed;
+    session.paused = true;
+    seconds(3);
+    expect(ship.group.position.equals(position)).toBe(true);
+    expect(session.telemetry.speed).toBe(speed);
+    session.paused = false;
+    step(1);
+    expect(ship.group.position.equals(position)).toBe(false);
+  });
+
+  it('has the same partial-throttle speed at 30 and 144 fps', () => {
+    world.bodies = [];
+    const speeds = [30, 144].map((fps) => {
+      ship.spawn(world.home);
+      session.input.thrust = 0.3;
+      seconds(2, 1 / fps);
+      return session.telemetry.speed;
+    });
+    expect(speeds[0]).toBeCloseTo(speeds[1], 6);
+  });
+
+  it('discards mouse motion during a jump instead of turning on arrival', () => {
+    session.input.modeRequest = 'jump';
+    step(1);
+    session.input.mouseDX = 1000;
+    session.input.mouseDY = 1000;
+    step(1);
+    expect(session.input.mouseDX).toBe(0);
+    expect(session.input.mouseDY).toBe(0);
+  });
+
+  it('keeps cannon shots ahead of a boosting fast ship', () => {
+    world.bodies = [];
+    faceAway();
+    session.input.modeRequest = 'fast';
+    session.input.thrust = 1;
+    session.input.boost = true;
+    seconds(4);
+    session.input.fire = true;
+    step(1);
+    session.input.fire = false;
+    const bolt = ship.boltGroup.children.find((b) => b.visible)!;
+    const before = bolt.position.clone().sub(ship.group.position).dot(heading());
+    seconds(0.3);
+    const after = bolt.position.clone().sub(ship.group.position).dot(heading());
+    expect(after).toBeGreaterThan(before + 0.02);
+  });
+
+  it('uses suit acceleration immediately when ejecting from fast flight', () => {
+    world.bodies = [];
+    session.input.modeRequest = 'fast';
+    seconds(4);
+    session.input.eject = true;
+    session.input.thrust = 1;
+    step(1);
+    expect(session.telemetry.speed).toBeLessThan(0.06);
+  });
+
+  it('keeps crash shake anchored and camera matrices current', () => {
+    step(1);
+    const origin = camera.position.clone();
+    ship.takeDamage(300);
+    seconds(1);
+    expect(camera.position.distanceTo(origin)).toBeLessThan(0.003);
+    const matrixPosition = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+    expect(matrixPosition.distanceTo(camera.position)).toBeLessThan(1e-9);
+  });
+
+  it('keeps targeting finite at the camera plane and points behind targets outward', () => {
+    camera.position.set(0, 0, 0);
+    camera.quaternion.identity();
+    camera.updateMatrixWorld(true);
+    const out = { x: 0, y: 0, on: 0, angle: 0 };
+    for (const pos of [new THREE.Vector3(), new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0)]) {
+      projectTarget(pos, camera, out);
+      expect(Number.isFinite(out.x) && Number.isFinite(out.y)).toBe(true);
+      expect(out.on).toBe(0);
+      expect(Math.max(Math.abs(out.x), Math.abs(out.y))).toBeCloseTo(0.86);
+    }
+  });
+
+  it('paces discovery notifications in seconds across frame rates', () => {
+    const ctx = { nearId: 'earth', altRadii: 0.3, sunDist: 1, speedFrac: 0, mode: 'cruise', systemName: 'sol', kills: 1, scanned: false, probeDist: Infinity, targetId: '' };
+    for (const fps of [30, 144]) {
+      localStorage.clear();
+      const tracker = makeMissionTracker();
+      expect(tracker.tick(ctx, 1 / fps)).toBe('earthOrbit');
+      for (let i = 0; i < fps * 5; i++) expect(tracker.tick(ctx, 1 / fps)).toBe('');
+      let next = '';
+      for (let i = 0; i < fps * 2 && !next; i++) next = tracker.tick(ctx, 1 / fps);
+      expect(next).toBe('firstBlood');
+    }
   });
 });

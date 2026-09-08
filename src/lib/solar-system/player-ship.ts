@@ -30,8 +30,11 @@ export { zoomFlightCamera, clearFlightInput } from '@/lib/solar-system/flight-in
 
 export const FLIGHT_UNIT = 0.006;
 const U = FLIGHT_UNIT;
-/** Hull unit — the ships are 8–9 H long. */
-const H = 0.22 * U;
+/** Hull unit — the ships are 8–9 H long. Sized against the worlds: the
+ *  Kestrel spans about a thirteenth of Earth's radius, so a planet fills
+ *  the view the way it should from a small craft, and the Moon still towers
+ *  over the ship. */
+const H = 0.044 * U;
 /** Scene units → km, anchored on Earth's rendered radius (0.028 = 6,371 km). */
 export const KM_PER_SCENE_UNIT = 6371 / 0.028;
 const LIGHT_KM_S = 299_792.458;
@@ -66,18 +69,23 @@ interface Regime {
   camBack: number;
   fov: number;
 }
+// Cruise is paced against the worlds, not against the void: at its ceiling
+// the ship crosses Earth's disc in about fifteen seconds, so a planet has
+// time to grow, a pass has time to be flown, and the console reads in
+// hundreds rather than thousands. Fast is the concession that makes the
+// space between planets crossable.
 const REGIMES: Record<Exclude<SpeedMode, 'jump'>, Regime> = {
-  cruise: { max: 2.5 * U, boost: 5 * U, accel: 14 * U, turn: 1, camBack: 24 * H, fov: 46 },
+  cruise: { max: 0.6 * U, boost: 1.3 * U, accel: 4 * U, turn: 1, camBack: 24 * H, fov: 46 },
   // Drag settles thrust at accel / (60 · 0.08); the fast regime needs the
   // extra push to actually reach its ceiling.
-  fast: { max: 22 * U, boost: 34 * U, accel: 120 * U, turn: 0.55, camBack: 34 * H, fov: 58 },
+  fast: { max: 12 * U, boost: 20 * U, accel: 70 * U, turn: 0.55, camBack: 34 * H, fov: 58 },
 };
 /** How quickly the drive re-tunes between regimes (per second). */
 const REGIME_BLEND = 1.6;
 /** EVA: the suit's SAFER jets — slow, precise, no weapons. */
 const E = 1.5 * H;
-const EVA: Regime = { max: 0.5 * U, boost: 0.9 * U, accel: 3 * U, turn: 1, camBack: 14 * E, fov: 50 };
-const EVA_CAM_UP = 2.2 * E;
+const EVA: Regime = { max: 0.16 * U, boost: 0.3 * U, accel: 1 * U, turn: 1, camBack: 14 * E, fov: 50 };
+const EVA_CAM_UP = 0.9 * E;
 const EVA_HULL_RADIUS = 0.6 * E;
 /** How close the suit must be to climb back aboard. */
 const BOARD_RANGE = 14 * H;
@@ -97,10 +105,20 @@ const BORESIGHT = 120 * H;
 const AIM_ASSIST_CONE = 0.09;
 const JUMP_CAM_BACK = 44 * H;
 const JUMP_FOV = 74;
-const CAM_UP = 8 * H;
-/** The chase camera stops here: the world's near plane is 0.02 scene units,
- *  and anything closer would clip the ship — or the suit — out of frame. */
-const MIN_CAM_BACK = 17 * H;
+/** How far above the hull the chase camera rides. Kept low so the ship sits
+ *  a little below the middle of the frame with the whole view open above it,
+ *  and clear of the console along the bottom edge. */
+const CAM_UP = 2.6 * H;
+/** The chase camera stops here — closer and the hull clips the near plane.
+ *  The canvas pulls the near plane in to FLIGHT_NEAR while a ship is flying,
+ *  which is what lets the camera ride this close to something this small. */
+const MIN_CAM_BACK = 10 * H;
+/** Near / far planes for the world camera while flying. The ship is tiny and
+ *  the camera rides just behind it, so the near plane has to come in; nothing
+ *  past the star shell is drawn in flight, so the far plane comes in too —
+ *  together they leave the depth buffer more precision than the orbit view. */
+export const FLIGHT_NEAR = 0.0012;
+export const FLIGHT_FAR = 1400;
 const CAM_ZOOM_MIN = 0.45;
 const CAM_ZOOM_MAX = 3.2;
 const DRAG_PER_FRAME = 0.92; // at 60 fps; applied as pow(0.92, dt·60)
@@ -112,6 +130,11 @@ const ROLL_RATE = 2.2;
 /** Assist-off: keys accelerate the rates instead of setting them. */
 const FREE_ANG_ACCEL = 2.4;
 const FREE_ANG_MAX = 2.2;
+/** Flight assist rolls the wings level when the pilot lets go of the roll
+ *  keys — the single biggest thing that stops a new pilot getting lost. It
+ *  waits this long after a deliberate roll, then corrects at this rate. */
+const LEVEL_DELAY = 0.8;
+const LEVEL_RATE = 1.1;
 
 const BOLT_SPEED = 24 * U;
 const BOLT_LIFE = 0.8;
@@ -142,8 +165,9 @@ export const MARKER_MAX = 4;
 
 /** Collision sphere around the hull centre. */
 const HULL_RADIUS = 1.3 * H;
-/** Flight acceleration at 1 g on a body's surface. */
-const ONE_G = 3 * U;
+/** Flight acceleration at 1 g on a body's surface — set against the cruise
+ *  drive, so a world pulls hard enough to be felt and to be climbed out of. */
+const ONE_G = 0.9 * U;
 /** Gravity is felt out to this many radii. */
 const GRAVITY_REACH = 10;
 /** The nearest-body readout reaches further, so a star fills it on arrival. */
@@ -297,6 +321,7 @@ export interface FlightTelemetry {
 export interface FlightSession {
   /** Set by the overlay; the canvas spawns / tears down the ship on change. */
   active: boolean;
+  paused: boolean;
   /** Chosen in the hangar before launch. */
   shipKind: ShipKind;
   input: FlightInput;
@@ -342,6 +367,7 @@ export interface FlightWorld {
 export function createFlightSession(): FlightSession {
   return {
     active: false,
+    paused: false,
     shipKind: 'kestrel',
     input: {
       thrust: 0, yaw: 0, lookYaw: 0, pitch: 0, roll: 0,
@@ -681,6 +707,7 @@ export interface PlayerShipHandle {
 interface Bolt {
   mesh: THREE.Mesh;
   dir: THREE.Vector3;
+  velocity: THREE.Vector3;
   life: number; // <0 idle
 }
 
@@ -725,7 +752,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     const mesh = new THREE.Mesh(boltGeom, boltMat);
     mesh.visible = false;
     boltGroup.add(mesh);
-    bolts.push({ mesh, dir: new THREE.Vector3(), life: -1 });
+    bolts.push({ mesh, dir: new THREE.Vector3(), velocity: new THREE.Vector3(), life: -1 });
   }
 
   // Speed streaks: a box of particles around the ship, drawn as segments
@@ -852,6 +879,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
   let odometerKm = 0;
   let crashT = -1;
   let alertHold = 0;
+  let levelHold = 0;
   let heldAlert: FlightAlert = '';
   let navId = '';
   let lastRegion = '';
@@ -898,6 +926,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     }
     b.dir.copy(tmp).sub(b.mesh.position).normalize();
     b.mesh.quaternion.setFromUnitVectors(tmp.set(0, 0, 1), b.dir);
+    b.velocity.copy(b.dir).multiplyScalar(BOLT_SPEED).add(vel);
     b.life = 0;
     b.mesh.visible = true;
     audio.laser();
@@ -1148,10 +1177,19 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       damage(amount, false);
     },
     update(dt, timeSec, camera, aliens, world) {
+      if (session.paused) {
+        audio.setEngine(0, false, 0);
+        audio.setRcs(0);
+        return;
+      }
       tel.hitFlash = Math.max(0, tel.hitFlash - dt * 2.5);
       tel.jumpFlash = Math.max(0, tel.jumpFlash - dt * 1.6);
       alertHold -= dt;
       crash.update(dt);
+      if (jumpPhase !== 'none' || crashT >= 0) {
+        input.mouseDX = input.mouseDY = 0;
+        pendYaw = pendPitch = 0;
+      }
       const enemies = aliens.enemies;
       tel.systemName = arrivedHold > 0 ? jumpName : jumpPhase === 'none' ? world.systemName : jumpOrigin;
       if (arrivedHold > 0) arrivedHold -= 1;
@@ -1196,6 +1234,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
             vel.set(0, 0, 0);
             angVel.set(0, 0, 0);
             mode = 'cruise';
+            Object.assign(eff, EVA);
             camBack = Math.max(MIN_CAM_BACK, EVA.camBack * (input.camZoom || 1));
             rig.snap();
           } else if (evaG.position.distanceTo(group.position) < BOARD_RANGE) {
@@ -1369,6 +1408,16 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         me.rotateY(angVel.y * dt + dYaw);
         me.rotateX(angVel.x * dt + dPitch);
         me.rotateZ(angVel.z * dt);
+        // Wings level. With assist on, the moment the pilot stops rolling the
+        // airframe rights itself against the ecliptic, so "up" stays up and a
+        // turn never quietly becomes a barrel roll. The correction fades out
+        // as the nose points at the poles, where level has no meaning.
+        levelHold = input.roll !== 0 || input.align ? LEVEL_DELAY : Math.max(0, levelHold - dt);
+        if (assist && pilot === 'ship' && levelHold <= 0) {
+          right.set(1, 0, 0).applyQuaternion(me.quaternion);
+          const upright = 1 - Math.abs(fwd.y);
+          me.rotateZ(-THREE.MathUtils.clamp(right.y * 2, -1, 1) * LEVEL_RATE * upright * upright * dt);
+        }
         rcsYaw = THREE.MathUtils.clamp(yawIn - dYaw * 25, -1, 1);
         rcsPitch = THREE.MathUtils.clamp(input.pitch - dPitch * 25, -1, 1);
         rcsRoll = input.roll;
@@ -1385,9 +1434,11 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
           sinceBoost = 0;
         }
         fwd.set(0, 0, 1).applyQuaternion(me.quaternion);
-        vel.addScaledVector(fwd, input.thrust * eff.accel * (boost ? 2 : 1) * dt);
         const drag = assist || pilot === 'eva' ? DRAG_PER_FRAME : FREE_DRAG_PER_FRAME;
-        vel.multiplyScalar(Math.pow(drag, dt * 60));
+        const decay = -60 * Math.log(drag);
+        const damping = Math.exp(-decay * dt);
+        vel.multiplyScalar(damping);
+        vel.addScaledVector(fwd, input.thrust * eff.accel * (boost ? 2 : 1) * (1 - damping) / decay);
         rcsBrake = input.thrust < 0 ? -input.thrust : 0;
         for (const b of world.bodies) {
           if (b.destroyed || b.kind === 'station') continue;
@@ -1452,6 +1503,8 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         odometerKm += vel.length() * dt * KM_PER_SCENE_UNIT;
       }
 
+      speed = vel.length();
+
       // ── Nearest body: altitude readout, proximity warning, re-entry. ──
       let near: FlightBody | null = null;
       let nearD = Infinity;
@@ -1486,7 +1539,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
           const atmoTop = near.radius * (near.atmosphere - 1);
           if (atmoTop > 0 && nearD < atmoTop) {
             atmo = 1 - nearD / atmoTop;
-            heatTarget = atmo * THREE.MathUtils.clamp(speed / (2 * U), 0, 1.4);
+            heatTarget = atmo * THREE.MathUtils.clamp(speed / (0.5 * U), 0, 1.4);
             heatTarget = Math.min(1, heatTarget);
             alert = near.kind === 'star' ? 'solar' : 'entry';
           } else if (nearD < near.radius * 1.5) {
@@ -1638,12 +1691,17 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
           continue;
         }
         prevPos.copy(b.mesh.position);
-        b.mesh.position.addScaledVector(b.dir, BOLT_SPEED * dt);
+        b.mesh.position.addScaledVector(b.velocity, dt);
+        seg.copy(b.mesh.position).sub(prevPos);
+        const boltLen2 = seg.lengthSq();
         let spent = false;
         for (let i = 0; i < enemies.length; i++) {
           const e = enemies[i];
           const r = e.radius + 0.3 * U;
-          if (b.mesh.position.distanceToSquared(e.group.position) < r * r) {
+          tmp.copy(e.group.position).sub(prevPos);
+          const along = boltLen2 > 0 ? THREE.MathUtils.clamp(tmp.dot(seg) / boltLen2, 0, 1) : 0;
+          tmp2.copy(prevPos).addScaledVector(seg, along);
+          if (tmp2.distanceToSquared(e.group.position) < r * r) {
             aliens.spawnSparks(b.mesh.position, 0.034);
             if (aliens.damage(e, 15)) tel.kills += 1;
             spent = true;
@@ -1803,7 +1861,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       }
       missionCtx.probeDist = probeDist;
       if (crashT < 0) {
-        const unlocked = missions.tick(missionCtx);
+        const unlocked = missions.tick(missionCtx, dt);
         if (unlocked) {
           tel.discovery = unlocked;
           tel.discoveryCount = missions.count();

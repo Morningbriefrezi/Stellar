@@ -57,6 +57,8 @@ import { makeSunSurface } from '@/lib/solar-system/sun-surface';
 import { makePostFx } from '@/lib/solar-system/post-processing';
 import {
   createPlayerShip,
+  FLIGHT_FAR,
+  FLIGHT_NEAR,
   MARKER_MAX,
   type FlightAnchor,
   type FlightBody,
@@ -66,7 +68,6 @@ import {
 } from '@/lib/solar-system/player-ship';
 import { makeAlphaCentauri } from '@/lib/solar-system/star-systems';
 import { makeSmallBodies } from '@/lib/solar-system/small-bodies';
-import { makeCockpit, type CockpitHandle } from '@/lib/solar-system/cockpit';
 import { makeAlienEncounters, type AlienHandle } from '@/lib/solar-system/aliens';
 import { makeDeepSpaceProbes } from '@/lib/solar-system/probes';
 import {
@@ -274,11 +275,13 @@ export function SolarSystemCanvas({
     // Far plane reaches past the cosmic-web shell (112k units out) plus the
     // widest camera radius, so the large-scale structure stays in view at
     // maximum zoom-out instead of being clipped away.
+    const ORBIT_NEAR = 0.02;
+    const ORBIT_FAR = 140000;
     const camera = new THREE.PerspectiveCamera(
       42,
       mount.clientWidth / mount.clientHeight,
-      0.02,
-      140000,
+      ORBIT_NEAR,
+      ORBIT_FAR,
     );
 
     // Furthest the camera pulls back. Everything past the Milky Way is laid
@@ -529,6 +532,7 @@ export function SolarSystemCanvas({
       applyEarthNight();
     });
 
+    const detailLoaded = new Set<SolarBodyId>();
     const applyLoadedTexture = (id: SolarBodyId, tex: THREE.Texture) => {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = Math.min(16, maxAniso);
@@ -537,16 +541,22 @@ export function SolarSystemCanvas({
       tex.generateMipmaps = true;
       tex.minFilter = THREE.LinearMipmapLinearFilter;
       tex.magFilter = THREE.LinearFilter;
+      const previous = textureById.get(id);
       textureById.set(id, tex);
       if (id === 'sun') {
         sunSurface.setMap(tex);
+        previous?.dispose();
         return;
       }
       const mesh = meshById.get(id);
       if (mesh) {
-        disposeMat(mesh.material as THREE.Material);
+        const oldMaterial = mesh.material as THREE.MeshStandardMaterial;
+        if (oldMaterial.emissiveMap === earthNightTex) oldMaterial.emissiveMap = null;
+        disposeMat(oldMaterial);
         mesh.material = createPlanetMaterial(id, lite, tex);
         if (id === 'earth') applyEarthNight();
+      } else {
+        previous?.dispose();
       }
     };
 
@@ -555,7 +565,7 @@ export function SolarSystemCanvas({
       loader.load(
         url,
         (tex) => {
-          if (textureLoadsCancelled) {
+          if (textureLoadsCancelled || detailLoaded.has(id)) {
             tex.dispose();
             return;
           }
@@ -563,7 +573,7 @@ export function SolarSystemCanvas({
         },
         undefined,
         () => {
-          if (textureLoadsCancelled || id === 'sun') return;
+          if (textureLoadsCancelled || detailLoaded.has(id) || id === 'sun') return;
           const mesh = meshById.get(id);
           if (mesh) {
             disposeMat(mesh.material as THREE.Material);
@@ -577,7 +587,7 @@ export function SolarSystemCanvas({
     // pixels, pull the 4K one in behind it. One fetch per body per session.
     const detailRequested = new Set<SolarBodyId>();
     const maybeLoadDetailMap = (id: SolarBodyId, mesh: THREE.Mesh) => {
-      if (detailRequested.has(id)) return;
+      if (lowData || detailRequested.has(id)) return;
       const url = NASA_PLANET_DETAIL_URL[id];
       if (!url) return;
       // Apparent radius as a fraction of the viewport height.
@@ -590,6 +600,7 @@ export function SolarSystemCanvas({
           tex.dispose();
           return;
         }
+        detailLoaded.add(id);
         applyLoadedTexture(id, tex);
       });
     };
@@ -603,9 +614,9 @@ export function SolarSystemCanvas({
     // tilted (Uranus ~59°, Neptune ~47°) — rendered slightly tamed so the
     // ovals stay readable.
     const AURORA_BY_ID: Partial<Record<SolarBodyId, Parameters<typeof makeAurora>[1]>> = {
-      earth: { color: 0x3dff8a, topColor: 0xff5a6a, latitudeDeg: 68, magneticTiltDeg: 11, intensity: 0.5 },
-      jupiter: { color: 0x6a8cff, topColor: 0xb08cff, latitudeDeg: 76, magneticTiltDeg: 10, intensity: 0.5 },
-      saturn: { color: 0x7aa0ff, topColor: 0x9fc0ff, latitudeDeg: 78, magneticTiltDeg: 0, intensity: 0.4 },
+      earth: { color: 0x3dff8a, topColor: 0xff5a6a, latitudeDeg: 68, magneticTiltDeg: 11, intensity: 0.34 },
+      jupiter: { color: 0x6a8cff, topColor: 0xb08cff, latitudeDeg: 76, magneticTiltDeg: 10, intensity: 0.2 },
+      saturn: { color: 0x7aa0ff, topColor: 0x9fc0ff, latitudeDeg: 78, magneticTiltDeg: 0, intensity: 0.16 },
       uranus: { color: 0x9fd8e8, topColor: 0xc0ecf4, latitudeDeg: 62, magneticTiltDeg: 45, intensity: 0.26 },
       neptune: { color: 0x8fb4ff, topColor: 0xb4ccff, latitudeDeg: 65, magneticTiltDeg: 40, intensity: 0.2 },
     };
@@ -637,12 +648,17 @@ export function SolarSystemCanvas({
       return mesh;
     };
 
+    let sampledEpoch = NaN;
+    let samples: ReturnType<typeof sampleSolarSystem> = [];
     const syncMeshes = () => {
-      const samples = sampleSolarSystem(
-        new Date(epochRef.current),
-        scaleRef.current,
-        plutoRef.current,
-      );
+      if (sampledEpoch !== epochRef.current) {
+        sampledEpoch = epochRef.current;
+        samples = sampleSolarSystem(
+          new Date(epochRef.current),
+          scaleRef.current,
+          plutoRef.current,
+        );
+      }
       const ids = new Set(samples.map((s) => s.id));
 
       for (const id of Array.from(meshById.keys())) {
@@ -993,7 +1009,6 @@ export function SolarSystemCanvas({
       camera.updateProjectionMatrix();
       renderer.setSize(mount.clientWidth, mount.clientHeight);
       postFx.setSize(mount.clientWidth, mount.clientHeight);
-      cockpit?.setAspect(mount.clientWidth / mount.clientHeight);
     };
     window.addEventListener('resize', onResize);
 
@@ -1006,7 +1021,6 @@ export function SolarSystemCanvas({
     // created lazily inside the loop and torn down the frame the session
     // goes inactive (or on unmount), so repeated enter/exit never leaks.
     let ship: PlayerShipHandle | null = null;
-    let cockpit: CockpitHandle | null = null;
     const teardownShip = () => {
       if (!ship) return;
       aliens.setHostile(null);
@@ -1016,13 +1030,13 @@ export function SolarSystemCanvas({
       ship.dispose();
       ship = null;
       delete window.__stellarFlight;
-      cockpit?.dispose();
-      cockpit = null;
       alphaCen.group.visible = false;
-      // The follow camera rolls its up vector and widens the lens; the
-      // orbit camera needs both back.
+      // The follow camera rolls its up vector, widens the lens and pulls the
+      // clipping planes in around the ship; the orbit camera needs them back.
       camera.up.set(0, 1, 0);
       camera.fov = 42;
+      camera.near = ORBIT_NEAR;
+      camera.far = ORBIT_FAR;
       camera.updateProjectionMatrix();
       renderer.toneMappingExposure = 1.18;
     };
@@ -1219,8 +1233,12 @@ export function SolarSystemCanvas({
           scene.add(ship.boltGroup);
           scene.add(ship.fxGroup);
           alphaCen.group.visible = true;
-          cockpit = makeCockpit(session.shipKind === 'lance' ? 0x7fd8ff : 0xffb347);
-          cockpit.setAspect(mount.clientWidth / mount.clientHeight);
+          // A ship is a fraction of a planet's radius across and the camera
+          // rides just behind it, so the near plane comes in. Nothing beyond
+          // the star shell is drawn in flight, so the far plane comes in too.
+          camera.near = FLIGHT_NEAR;
+          camera.far = FLIGHT_FAR;
+          camera.updateProjectionMatrix();
           syncWorld(null, earthPos, now);
           ship.spawn(world.home);
           const live = ship;
@@ -1235,7 +1253,7 @@ export function SolarSystemCanvas({
       if (ship) {
         syncWorld(ship.group.position, earthPos, now);
         ship.update(dtSec, (now - t0) / 1000, camera, aliens, world);
-        alphaCen.update(dtSec, camera.position, camera);
+        alphaCen.update(session?.paused ? 0 : dtSec, camera.position, camera);
         markTargets(session!.telemetry, world, camera);
         // Exposure adapts against the Sun: the closer and the more the nose
         // is on it, the further the iris closes, so the disc keeps a
@@ -1260,7 +1278,7 @@ export function SolarSystemCanvas({
       }
       // Alien sightings are decorative (reduce-motion pauses them) — but in
       // Explore Mode they are the opposition, so they always run.
-      if (!reduceMotion || flightActive) aliens.update(dtSec, earthPos);
+      if ((!reduceMotion || flightActive) && !session?.paused) aliens.update(dtSec, earthPos);
       // Epoch-accurate motion — belts, clouds, the real Moon, and Saturn's
       // ring particles all track simulation time (Kepler rates), so they
       // respond to play/scrub/speed exactly like the planets do.
@@ -1312,7 +1330,7 @@ export function SolarSystemCanvas({
       }
 
       // Cosmic tier blend + galactic-layer fades.
-      currentTier = tierBlendFromRadius(sysRadius);
+      currentTier = tierBlendFromRadius(ship ? 26 : sysRadius);
       // Star-system labels belong to the stellar tier only — over the whole
       // galaxy thirty floating names would just be noise.
       // The catalogue stars are drawn on a compressed local scale — at the
@@ -1340,7 +1358,7 @@ export function SolarSystemCanvas({
       // Stream the view + projected anchor positions to the parent so it
       // can place the Sun pin / Milky Way tap label as HTML overlays.
       const onView = onCosmicViewRef.current;
-      if (onView) {
+      if (onView && !flightActive) {
         const width = mount.clientWidth;
         const height = mount.clientHeight;
         const sunWorld = sunMesh ? sunMesh.position : new THREE.Vector3();
@@ -1376,19 +1394,6 @@ export function SolarSystemCanvas({
       }
 
       postFx.render(dtSec);
-      // Cockpit view: the interior is its own scene, drawn over the frame
-      // with the depth buffer cleared, so it is never clipped by the world's
-      // near plane and never bloomed.
-      if (ship && cockpit && session) {
-        const tel = session.telemetry;
-        if (tel.view === 'cockpit' && tel.pilot === 'ship' && !tel.crashed) {
-          cockpit.update(dtSec, tel);
-          renderer.autoClear = false;
-          renderer.clearDepth();
-          renderer.render(cockpit.scene, cockpit.camera);
-          renderer.autoClear = true;
-        }
-      }
       raf = requestAnimationFrame(loop);
     };
     startLoop();

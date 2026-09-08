@@ -89,7 +89,7 @@ export function makeCameraRig(): CameraRig {
       // Longitudinal acceleration, normalised to the drive's own push, and
       // low-passed so a single frame's thrust step cannot snap the rig.
       const vFwd = f.velocity.dot(fwd);
-      const raw = dt > 0 ? (vFwd - prevVFwd) / dt : 0;
+      const raw = !snap && dt > 0 ? (vFwd - prevVFwd) / dt : 0;
       prevVFwd = vFwd;
       const norm = f.accelRef > 0 ? THREE.MathUtils.clamp(raw / f.accelRef, -1.5, 1.5) : 0;
       accel += (norm - accel) * (1 - Math.exp(-dt * 5));
@@ -99,6 +99,8 @@ export function makeCameraRig(): CameraRig {
       const amp = impulse + buffet;
 
       if (f.view === 'crash') {
+        if (snap) camPos.copy(camera.position);
+        camera.position.copy(camPos);
         camera.up.copy(camUp);
         camera.lookAt(f.crashLook);
       } else if (f.view === 'cockpit') {
@@ -149,7 +151,7 @@ export function makeCameraRig(): CameraRig {
       }
 
       if (amp > 0.002) {
-        const s = amp * f.camBack * 0.045;
+        const s = amp * (f.view === 'cockpit' ? 0.003 : f.camBack) * 0.045;
         camera.position
           .addScaledVector(right, wobble(clock, 0) * s)
           .addScaledVector(up, wobble(clock, 3.3) * s)
@@ -163,6 +165,7 @@ export function makeCameraRig(): CameraRig {
         camera.fov = fov;
         camera.updateProjectionMatrix();
       }
+      camera.updateMatrixWorld(true);
       snap = false;
     },
     snap() {

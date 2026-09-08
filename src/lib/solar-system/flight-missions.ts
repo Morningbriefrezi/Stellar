@@ -62,7 +62,7 @@ const STORE_KEY = 'stellar_expedition_log';
 
 export interface MissionTracker {
   /** Evaluate this frame; returns the id of a newly unlocked discovery, or ''. */
-  tick: (c: MissionContext) => string;
+  tick: (c: MissionContext, dt: number) => string;
   has: (id: string) => boolean;
   count: () => number;
   total: number;
@@ -94,9 +94,9 @@ export function makeMissionTracker(): MissionTracker {
   let cooldown = 0;
   return {
     total: DISCOVERIES.length,
-    tick(c) {
+    tick(c, dt) {
       if (cooldown > 0) {
-        cooldown -= 1;
+        cooldown -= dt;
         return '';
       }
       for (const d of DISCOVERIES) {
@@ -104,7 +104,7 @@ export function makeMissionTracker(): MissionTracker {
         if (!d.when(c)) continue;
         done.add(d.id);
         save(done);
-        cooldown = 240;
+        cooldown = 6;
         return d.id;
       }
       return '';
