@@ -1156,7 +1156,7 @@
       "hangar": "Hangar",
       "ships": {
         "kestrel": "Kestrel",
-        "lance": "Lance"
+        "xfoil": "X-foil"
       },
       "eject": "Eject",
       "board": "Board",
@@ -1239,7 +1239,7 @@
       "launchSub": "Launch sequence",
       "shipRoles": {
         "kestrel": "Survey ship",
-        "lance": "Interceptor"
+        "xfoil": "Starfighter"
       },
       "assistOn": "Assist on",
       "assistOff": "Assist off",
@@ -1364,6 +1364,23 @@
           "title": "Proxima b",
           "fact": "A rocky world in Proxima's habitable zone, found in 2016."
         }
+      },
+      "help": "Controls",
+      "helpShow": "Show controls",
+      "keys": {
+        "r1": "W / S — thrust and brake",
+        "r2": "A / D — turn left and right",
+        "r3": "Mouse — steer",
+        "r4": "Q / E — roll",
+        "r5": "Shift — boost · Space — fire",
+        "r6": "1 2 3 or the dial — cruise, fast, light speed",
+        "r7": "T — next target · G — hold to align",
+        "r8": "F — wings · C — cockpit · Esc — pause",
+        "t1": "Left half of the screen — steer",
+        "t2": "Right keys — fire, boost, brake",
+        "t3": "Tap the dial — cruise, fast, light speed",
+        "t4": "Tap the compass — next target",
+        "t5": "Pause — top right"
       }
     }
   },

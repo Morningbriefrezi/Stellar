@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronsUp, Crosshair, Pause, Play, Rocket, Shield, X, Zap } from 'lucide-react';
+import { ChevronsUp, Crosshair, HelpCircle, Pause, Play, Rocket, Shield, X, Zap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { attachDesktopControls, clearFlightInput } from '@/lib/solar-system/flight-input';
 import { type FlightSession, type ShipKind } from '@/lib/solar-system/player-ship';
@@ -12,8 +12,11 @@ interface PlayerShipProps {
 }
 interface Stick { id: number; ox: number; oy: number; x: number; y: number }
 const STICK_RADIUS = 62;
-const SHIPS: ShipKind[] = ['kestrel', 'lance'];
+const SHIPS: ShipKind[] = ['kestrel', 'xfoil'];
 const BARS = ['shield', 'energy', 'boost'] as const;
+const KEY_ROWS = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'] as const;
+const TOUCH_ROWS = ['t1', 't2', 't3', 't4', 't5'] as const;
+const HELP_SEEN = 'stellar_explore_help';
 const ICONS = [Shield, Zap, ChevronsUp];
 const SOLAR_IDS = new Set(['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto']);
 const fmt = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1)} M` : n >= 1e4 ? `${Math.round(n / 1000)} K` : n >= 100 ? Math.round(n).toLocaleString('en-US') : n.toFixed(2);
@@ -25,6 +28,7 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
   const [paused, setPaused] = useState(false);
   const [touch, setTouch] = useState(false);
   const [shipKind, setShipKind] = useState<ShipKind>(session.shipKind);
+  const [help, setHelp] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const padRef = useRef<HTMLCanvasElement>(null);
   const radarRef = useRef<HTMLCanvasElement>(null);
@@ -68,6 +72,15 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
     setActive(true);
     setPaused(false);
     onActiveChange(true);
+    // First flight opens the control card; after that it is on the key.
+    try {
+      if (!localStorage.getItem(HELP_SEEN)) {
+        setHelp(true);
+        localStorage.setItem(HELP_SEEN, '1');
+      }
+    } catch {
+      // Private mode — just fly.
+    }
     attach();
   };
   const resume = () => {
@@ -83,6 +96,7 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
     clearFlightInput(session.input);
     setActive(false);
     setPaused(false);
+    setHelp(false);
     onActiveChange(false);
   };
   useEffect(() => {
@@ -287,7 +301,7 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
     <div ref={rootRef} className="flight-hud" data-phase={active ? 'flying' : 'idle'} data-paused={paused}>
       {!active ? (
         <div className="flight-hud__launch">
-          <button type="button" className="flight-hud__ship" onClick={() => setShipKind(SHIPS[shipKind === 'kestrel' ? 1 : 0])} aria-label={t('hangar')}>
+          <button type="button" className="flight-hud__ship" onClick={() => setShipKind(shipKind === 'kestrel' ? 'xfoil' : 'kestrel')} aria-label={t('hangar')}>
             {t(`ships.${shipKind}`)}
           </button>
           <button type="button" className="flight-hud__explore" onClick={enter}><Rocket size={16} aria-hidden />{t('explore')}</button>
@@ -301,11 +315,23 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
             <span ref={statusRef} className="flight-hud__status" role="status" />
           </div>
           <div className="flight-hud__pause">
+            <button type="button" onClick={() => setHelp((h) => !h)} aria-label={t('helpShow')} aria-expanded={help}>
+              <HelpCircle size={19} aria-hidden />
+            </button>
             <button type="button" onClick={paused ? resume : pause} aria-label={t(paused ? 'resume' : 'pause')}>
               {paused ? <Play size={20} aria-hidden /> : <Pause size={20} aria-hidden />}
             </button>
             {paused && <button type="button" onClick={exit} aria-label={t('exit')}><X size={20} aria-hidden /></button>}
           </div>
+          {help && (
+            <div className="flight-hud__help" role="dialog" aria-label={t('help')}>
+              <div className="flight-hud__help-head">
+                <span>{t('help')}</span>
+                <button type="button" onClick={() => setHelp(false)} aria-label={t('exit')}><X size={14} aria-hidden /></button>
+              </div>
+              {(touch ? TOUCH_ROWS : KEY_ROWS).map((k) => <p key={k}>{t(`keys.${k}`)}</p>)}
+            </div>
+          )}
           <div ref={markerRef} className="flight-hud__marker" hidden><span ref={markerNameRef} /></div>
           <div className="flight-hud__console">
             <button type="button" className="flight-hud__radar" aria-label={t('target')} onClick={() => { session.input.targetStep = 1; }} disabled={paused}>
@@ -330,15 +356,21 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
                 </div>; })}
               </div>
             </div>
-          </div>
-          {touch && !paused && <>
-            <canvas ref={padRef} className="flight-hud__pad" aria-hidden />
-            <div className="flight-hud__touch">
-              <button type="button" {...hold('brake')} aria-label={t('brake')}><Pause size={18} aria-hidden /></button>
-              <button type="button" {...hold('boost')} aria-label={t('boost')}><ChevronsUp size={22} aria-hidden /></button>
-              <button type="button" {...hold('fire')} aria-label={t('fire')}><Crosshair size={22} aria-hidden /></button>
+            <div className="flight-hud__aux">
+              {touch ? (
+                <>
+                  <button type="button" {...hold('fire')} aria-label={t('fire')}><Crosshair size={20} aria-hidden /><span>{t('fire')}</span></button>
+                  <button type="button" {...hold('boost')} aria-label={t('boost')}><ChevronsUp size={20} aria-hidden /><span>{t('boost')}</span></button>
+                  <button type="button" {...hold('brake')} aria-label={t('brake')}><Pause size={16} aria-hidden /><span>{t('brake')}</span></button>
+                </>
+              ) : (
+                <button type="button" onClick={() => { session.input.foilsToggle = true; }} aria-label={t('foils')} disabled={paused}>
+                  <ChevronsUp size={18} aria-hidden /><span>{t('foils')}</span>
+                </button>
+              )}
             </div>
-          </>}
+          </div>
+          {touch && !paused && <canvas ref={padRef} className="flight-hud__pad" aria-hidden />}
         </>
       )}
     </div>

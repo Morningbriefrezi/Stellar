@@ -329,7 +329,7 @@ describe('EVA and stations', () => {
 
   it('interceptor is the faster ship', () => {
     const fast = createFlightSession();
-    fast.shipKind = 'lance';
+    fast.shipKind = 'xfoil';
     const other = createPlayerShip(fast);
     other.spawn(world.home);
     other.group.lookAt(new THREE.Vector3(1, 0, 10));

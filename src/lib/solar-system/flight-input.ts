@@ -21,10 +21,10 @@ const CAM_ZOOM_STEP = 1.16;
 /** Pixels of motion that count as none — trackpads and optical sensors drift. */
 const MOUSE_DEAD_PX = 0.6;
 /** Radians per pixel at the linear part of the curve. */
-const MOUSE_SENS = 0.0014;
+const MOUSE_SENS = 0.0011;
 /** One frame of pointer motion can turn the nose at most this far — a flick
  *  of the wrist should not spin the ship. */
-const MOUSE_MAX_STEP = 0.06;
+const MOUSE_MAX_STEP = 0.045;
 
 /** Pull the chase camera in or push it out, within its stops. */
 export function zoomFlightCamera(input: FlightInput, direction: number) {

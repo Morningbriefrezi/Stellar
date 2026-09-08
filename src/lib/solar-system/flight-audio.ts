@@ -28,9 +28,12 @@ export interface FlightAudio {
   dispose: () => void;
 }
 
+/** Deliberately quiet. The deck should be heard, not listened to: the drive
+ *  is a hum under the view, a shot is a tick, a warning is a note. Anything
+ *  louder becomes tiring within a minute of flying. */
 const CHANNEL_GAIN: Record<AudioChannel, number> = {
-  engine: 0.16, boost: 0.14, rcs: 0.12, ambience: 0.05, warning: 0.16,
-  weapon: 0.12, shield: 0.18, jumpCharge: 0.14, hyperspace: 0.32,
+  engine: 0.03, boost: 0.025, rcs: 0.015, ambience: 0.012, warning: 0.045,
+  weapon: 0.03, shield: 0.04, jumpCharge: 0.03, hyperspace: 0.06,
 };
 
 export function makeFlightAudio(): FlightAudio {

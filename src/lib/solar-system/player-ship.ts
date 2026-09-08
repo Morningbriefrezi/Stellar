@@ -20,7 +20,7 @@ import { softSpriteTexture } from '@/lib/solar-system/soft-sprite';
 import { makeRadio } from '@/lib/solar-system/radio';
 import { makeFlightAudio } from '@/lib/solar-system/flight-audio';
 import { makeCameraRig, type CameraFrame } from '@/lib/solar-system/flight-camera';
-import { buildCosmonaut, buildKestrel, buildLance, type ShipKind, type ShipParts } from '@/lib/solar-system/ship-mesh';
+import { buildCosmonaut, buildKestrel, buildXfoil, type ShipKind, type ShipParts } from '@/lib/solar-system/ship-mesh';
 import { shapeMouse } from '@/lib/solar-system/flight-input';
 import { makeMissionTracker, type MissionContext } from '@/lib/solar-system/flight-missions';
 import { projectTarget, stepTarget, type TargetCandidate, type TargetKind, type TargetScreen } from '@/lib/solar-system/flight-targeting';
@@ -124,9 +124,9 @@ const CAM_ZOOM_MAX = 3.2;
 const DRAG_PER_FRAME = 0.92; // at 60 fps; applied as pow(0.92, dt·60)
 /** With flight assist off only a whisper of drag remains — momentum is the point. */
 const FREE_DRAG_PER_FRAME = 0.9998;
-const YAW_RATE = 1.5;
-const PITCH_RATE = 1.3;
-const ROLL_RATE = 2.2;
+const YAW_RATE = 1.15;
+const PITCH_RATE = 1.0;
+const ROLL_RATE = 1.8;
 /** Assist-off: keys accelerate the rates instead of setting them. */
 const FREE_ANG_ACCEL = 2.4;
 const FREE_ANG_MAX = 2.2;
@@ -711,15 +711,15 @@ interface Bolt {
   life: number; // <0 idle
 }
 
-/** The interceptor trades armour for pace: faster, and it turns harder. */
+/** The starfighter trades armour for pace: faster, and it turns harder. */
 function shipRegimes(kind: ShipKind): Record<Exclude<SpeedMode, 'jump'>, Regime> {
-  if (kind !== 'lance') return REGIMES;
+  if (kind !== 'xfoil') return REGIMES;
   const tune = (r: Regime): Regime => ({ ...r, max: r.max * 1.2, boost: r.boost * 1.2, accel: r.accel * 1.3, turn: r.turn * 1.15 });
   return { cruise: tune(REGIMES.cruise), fast: tune(REGIMES.fast) };
 }
 
 export function createPlayerShip(session: FlightSession): PlayerShipHandle {
-  const shipParts: ShipParts = session.shipKind === 'lance' ? buildLance(H) : buildKestrel(H);
+  const shipParts: ShipParts = session.shipKind === 'xfoil' ? buildXfoil(H) : buildKestrel(H);
   const evaParts = buildCosmonaut(E);
   const { group, cannonTips } = shipParts;
   const evaG = evaParts.group;
@@ -1378,7 +1378,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         const yawIn = THREE.MathUtils.clamp(input.yaw + input.lookYaw, -1, 1);
         angTarget.set(-input.pitch * PITCH_RATE * turn, -yawIn * YAW_RATE * turn, input.roll * ROLL_RATE);
         if (assist || pilot === 'eva') {
-          angVel.lerp(angTarget, 1 - Math.exp(-dt * 7));
+          angVel.lerp(angTarget, 1 - Math.exp(-dt * 4.2));
         } else {
           angVel.addScaledVector(angTarget, FREE_ANG_ACCEL * dt);
           angVel.multiplyScalar(Math.exp(-dt * 0.12));
@@ -1389,7 +1389,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         pendPitch += shapeMouse(input.mouseDY, turn);
         input.mouseDX = 0;
         input.mouseDY = 0;
-        const mk = 1 - Math.exp(-dt * 14);
+        const mk = 1 - Math.exp(-dt * 9);
         let dYaw = pendYaw * mk;
         let dPitch = pendPitch * mk;
         pendYaw -= dYaw;
@@ -1421,11 +1421,13 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         rcsYaw = THREE.MathUtils.clamp(yawIn - dYaw * 25, -1, 1);
         rcsPitch = THREE.MathUtils.clamp(input.pitch - dPitch * 25, -1, 1);
         rcsRoll = input.roll;
-        // The airframe banks into a turn; the physics frame does not.
-        const bankTarget = -(yawIn * 0.5 + dYaw * 6) - angVel.y * 0.12;
-        bank += (THREE.MathUtils.clamp(bankTarget, -0.6, 0.6) - bank) * (1 - Math.exp(-dt * 5));
+        // The airframe banks into the turn; the physics frame does not.
+        // Forward is +Z with the port wing on +X, so a turn to starboard is a
+        // negative yaw rate and dropping the starboard wing is a positive roll.
+        const bankTarget = yawIn * 0.32 - dYaw * 5 - angVel.y * 0.1;
+        bank += (THREE.MathUtils.clamp(bankTarget, -0.55, 0.55) - bank) * (1 - Math.exp(-dt * 3.4));
         parts().hull.rotation.z = pilot === 'ship' ? bank : bank * 0.3;
-        parts().hull.rotation.x = -angVel.x * 0.04;
+        parts().hull.rotation.x = -angVel.x * 0.05;
 
         // ── Thrust, drag, gravity. ──
         const boost = input.boost && input.thrust > 0 && boostCharge > BOOST_FLOOR;
@@ -1585,7 +1587,9 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       const foilsOpen = pilot === 'ship' && jumpPhase === 'none' && (foilsForced ?? foilsAuto);
       foilT += ((foilsOpen ? 1 : 0) - foilT) * (1 - Math.exp(-dt * 3.2));
       for (const w of shipParts.wings) {
-        w.pivot.rotation.y = THREE.MathUtils.lerp(w.closed, w.open, foilT);
+        const a = THREE.MathUtils.lerp(w.closed, w.open, foilT);
+        if (w.axis === 'z') w.pivot.rotation.z = a;
+        else w.pivot.rotation.y = a;
       }
 
       // ── Engine visuals: the core answers the throttle with a ramp, the

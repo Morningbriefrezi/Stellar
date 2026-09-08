@@ -58,8 +58,8 @@ export function makeRadio(): RadioHandle {
     open() {
       safe((c) => {
         const t0 = c.currentTime;
-        burst(c, t0, 0.12, 0.5, 2400);
-        burst(c, t0 + 0.14, 0.06, 0.3, 4000);
+        burst(c, t0, 0.12, 0.18, 2400);
+        burst(c, t0 + 0.14, 0.06, 0.1, 4000);
         if (carrier) return;
         if (!noise) return;
         const src = c.createBufferSource();
@@ -70,7 +70,7 @@ export function makeRadio(): RadioHandle {
         lp.frequency.value = 1800;
         const g = c.createGain();
         g.gain.setValueAtTime(0.0001, t0);
-        g.gain.exponentialRampToValueAtTime(0.035, t0 + 0.3);
+        g.gain.exponentialRampToValueAtTime(0.012, t0 + 0.3);
         src.connect(lp).connect(g).connect(c.destination);
         src.start(t0);
         carrier = { src, gain: g };
@@ -104,7 +104,7 @@ export function makeRadio(): RadioHandle {
           bp.Q.value = 3;
           const g = c.createGain();
           g.gain.setValueAtTime(0.0001, t);
-          g.gain.exponentialRampToValueAtTime(0.09, t + 0.015);
+          g.gain.exponentialRampToValueAtTime(0.03, t + 0.015);
           g.gain.exponentialRampToValueAtTime(0.0005, t + len);
           osc.connect(bp).connect(g).connect(c.destination);
           osc.onended = () => {
@@ -118,7 +118,7 @@ export function makeRadio(): RadioHandle {
           vib.start(t);
           osc.stop(t + len + 0.01);
           vib.stop(t + len + 0.01);
-          if (rnd() > 0.6) burst(c, t, len * 0.8, 0.05, 3000 + rnd() * 3000);
+          if (rnd() > 0.6) burst(c, t, len * 0.8, 0.02, 3000 + rnd() * 3000);
           t += len + (rnd() > 0.75 ? 0.16 : 0.02);
         }
       });
@@ -126,7 +126,7 @@ export function makeRadio(): RadioHandle {
     close() {
       safe((c) => {
         const t0 = c.currentTime;
-        burst(c, t0, 0.09, 0.4, 3000);
+        burst(c, t0, 0.09, 0.14, 3000);
         if (carrier) {
           carrier.gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
           const dead = carrier;
