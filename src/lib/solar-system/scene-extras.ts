@@ -58,6 +58,20 @@ export function makeOrbitRings(mode: ScaleMode, includePluto: boolean): THREE.Gr
   return group;
 }
 
+/** Dim the orbit paths. They orient you from far out, but crossing the frame
+ *  at close range they are just lines over the thing you came to look at. */
+export function setOrbitRingsFade(group: THREE.Group, k: number) {
+  group.visible = k > 0.02;
+  if (!group.visible) return;
+  for (const child of group.children) {
+    const line = child as THREE.LineLoop;
+    const base = (line.userData.baseOpacity as number | undefined) ??
+      ((line.material as THREE.LineBasicMaterial).opacity);
+    line.userData.baseOpacity = base;
+    (line.material as THREE.LineBasicMaterial).opacity = base * k;
+  }
+}
+
 export function disposeOrbitRings(group: THREE.Group) {
   group.traverse((o) => {
     if (o instanceof THREE.LineLoop || o instanceof THREE.Line) {
@@ -476,8 +490,11 @@ const ATMOSPHERE_VERT = `
   }
 `;
 
-// Rayleigh-style limb: fresnel rim that is brightest on the sunlit side and
-// fades around the terminator. The Sun sits at the scene origin.
+// Rayleigh-style limb: a fresnel rim that is brightest on the sunlit side
+// and fades around the terminator, with a softer inner glow so the air reads
+// as a layer with depth rather than a ring drawn round the disc, and a warm
+// tint where the light grazes the terminator. The Sun sits at the scene
+// origin.
 const ATMOSPHERE_FRAG = `
   uniform vec3 uColor;
   uniform float uIntensity;
@@ -487,10 +504,18 @@ const ATMOSPHERE_FRAG = `
   varying vec3 vWorldPos;
   varying vec3 vWorldNrm;
   void main() {
-    float fresnel = pow(1.0 - max(dot(vNormal, vView), 0.0), uPower);
+    float ndv = max(dot(vNormal, vView), 0.0);
+    // The rim peaks just inside the shell's silhouette and fades to nothing
+    // at it, so the air thins out instead of ending in a drawn line.
+    float rim = pow(1.0 - ndv, uPower) * smoothstep(0.0, 0.22, ndv) * 1.8;
+    float body = pow(1.0 - ndv, uPower * 0.45) * 0.24;
     float sunFacing = dot(normalize(vWorldNrm), normalize(-vWorldPos));
-    float lit = 0.28 + 0.72 * smoothstep(-0.35, 0.4, sunFacing);
-    gl_FragColor = vec4(uColor * fresnel * uIntensity * lit, fresnel * lit);
+    float lit = 0.22 + 0.78 * smoothstep(-0.35, 0.4, sunFacing);
+    // Grazing light at the terminator scatters long wavelengths.
+    float dusk = smoothstep(-0.25, 0.05, sunFacing) * (1.0 - smoothstep(0.05, 0.4, sunFacing));
+    vec3 col = mix(uColor, uColor * vec3(1.5, 0.95, 0.55) + vec3(0.25, 0.08, 0.0), dusk * 0.7);
+    float a = (rim + body) * lit;
+    gl_FragColor = vec4(col * a * uIntensity, a);
   }
 `;
 
@@ -586,7 +611,7 @@ export function makeEarthExtras(earthRadius: number, lite: boolean): EarthExtras
   }
 
   // Atmosphere fresnel shell
-  const atmosphereMesh = makeAtmosphereShell(earthRadius, 0x6ab7ff, 1.06, 1.3, 2.4);
+  const atmosphereMesh = makeAtmosphereShell(earthRadius, 0x6ab7ff, 1.075, 1.5, 2.6);
 
   // Moon — orbiting parent group; group orbits, moon spins. The procedural
   // fallback texture swaps to the real NASA LRO-derived global map on load,
@@ -694,66 +719,44 @@ function lensFlareSprite(): THREE.CanvasTexture {
   return t;
 }
 
-/** Corona streamers — radial rays with a soft core, spun slowly as sprites. */
+/**
+ * Corona: the K-corona as a spacecraft actually records it — a smooth
+ * luminous halo, brightest at the limb and falling off fast, with only a
+ * faint large-scale streamer structure. Deliberately no hard rays: spikes
+ * radiating from a star are a camera artefact, not something you would see.
+ */
 function coronaRaysTexture(): THREE.CanvasTexture {
   const s = 512;
   const c = document.createElement('canvas');
   c.width = c.height = s;
   const ctx = c.getContext('2d')!;
   ctx.clearRect(0, 0, s, s);
-  ctx.globalCompositeOperation = 'lighter';
   const cx = s / 2;
   const cy = s / 2;
-  ctx.lineCap = 'round';
-  for (let i = 0; i < 170; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const len = s * (0.16 + Math.pow(Math.random(), 1.6) * 0.34);
-    const alpha = 0.06 + Math.random() * 0.2;
-    const ex = cx + Math.cos(a) * len;
-    const ey = cy + Math.sin(a) * len;
-    const g = ctx.createLinearGradient(cx, cy, ex, ey);
-    g.addColorStop(0, `rgba(255,225,170,${alpha})`);
-    g.addColorStop(0.45, `rgba(255,170,90,${alpha * 0.55})`);
-    g.addColorStop(1, 'rgba(255,120,50,0)');
-    ctx.strokeStyle = g;
-    ctx.lineWidth = 1 + Math.random() * 3;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(ex, ey);
-    ctx.stroke();
+  const img = ctx.createImageData(s, s);
+  const R = s * 0.5;
+  for (let y = 0; y < s; y++) {
+    for (let x = 0; x < s; x++) {
+      const dx = (x - cx) / R;
+      const dy = (y - cy) / R;
+      const r = Math.hypot(dx, dy);
+      if (r > 1) continue;
+      // Radial falloff of the corona's surface brightness.
+      let b = Math.exp(-Math.pow(Math.max(r - 0.12, 0) * 3.6, 1.35));
+      // Very broad, low-contrast streamer lobes — equatorial, as in reality.
+      const a = Math.atan2(dy, dx);
+      const streamer = 1 + 0.22 * Math.sin(a * 2) + 0.1 * Math.sin(a * 3 + 1.1);
+      b *= streamer;
+      // Feather the outer edge so the sprite never shows its bounds.
+      b *= 1 - Math.pow(r, 6);
+      const i = (y * s + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 214;
+      img.data[i + 2] = 168;
+      img.data[i + 3] = Math.round(Math.max(0, Math.min(1, b)) * 255);
+    }
   }
-  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, s * 0.24);
-  core.addColorStop(0, 'rgba(255,238,205,0.85)');
-  core.addColorStop(0.5, 'rgba(255,190,110,0.32)');
-  core.addColorStop(1, 'rgba(255,150,70,0)');
-  ctx.fillStyle = core;
-  ctx.fillRect(0, 0, s, s);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = SRGB;
-  return tex;
-}
-
-/** Lens ghost: soft disc or thin ring. */
-function flareGhostTexture(ring: boolean): THREE.CanvasTexture {
-  const s = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = s;
-  const ctx = c.getContext('2d')!;
-  ctx.clearRect(0, 0, s, s);
-  const g = ring
-    ? ctx.createRadialGradient(s / 2, s / 2, s * 0.3, s / 2, s / 2, s * 0.48)
-    : ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s * 0.48);
-  if (ring) {
-    g.addColorStop(0, 'rgba(255,255,255,0)');
-    g.addColorStop(0.55, 'rgba(255,255,255,0.7)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-  } else {
-    g.addColorStop(0, 'rgba(255,255,255,0.75)');
-    g.addColorStop(0.6, 'rgba(255,255,255,0.25)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-  }
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, s, s);
+  ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = SRGB;
   return tex;
@@ -820,11 +823,14 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
   // counter-rotating streamer layers, all breathing on their own phase. ──
   const flareTex = lensFlareSprite();
   const raysTex = coronaRaysTexture();
+  // Kept tight to the disc. A corona that reaches ten radii out is bigger
+  // than the inner planets' orbits at this scale and simply erases whatever
+  // you flew over to look at.
   const CORONA_SPECS = [
-    { tex: flareTex, scale: 3.0, opacity: 0.55, color: 0xffd9a0, spin: 0 },
-    { tex: raysTex, scale: 5.2, opacity: 0.55, color: 0xffc078, spin: 0.025 },
-    { tex: raysTex, scale: 7.4, opacity: 0.32, color: 0xff9a50, spin: -0.014 },
-    { tex: flareTex, scale: 10.5, opacity: 0.16, color: 0xff8040, spin: 0 },
+    { tex: flareTex, scale: 1.7, opacity: 0.5, color: 0xffd9a0, spin: 0 },
+    { tex: raysTex, scale: 2.5, opacity: 0.45, color: 0xffc078, spin: 0.025 },
+    { tex: raysTex, scale: 3.3, opacity: 0.24, color: 0xff9a50, spin: -0.014 },
+    { tex: flareTex, scale: 4.2, opacity: 0.12, color: 0xff8040, spin: 0 },
   ];
   const corona = CORONA_SPECS.map((spec, i) => {
     const mat = new THREE.SpriteMaterial({
@@ -892,9 +898,10 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
   let flareT = -1;    // <0 = idle, otherwise seconds since eruption began
   const FLARE_DUR = 3.2;
 
-  // ── Lens flare: glare sprite at the Sun plus ghosts strung along the
-  // line from the Sun through the screen centre. Ghosts only show while the
-  // camera looks toward the Sun; they're lens artefacts, so no depth test. ──
+  // ── Glare: a single soft bloom around the disc that strengthens as the
+  // view swings toward the Sun. No ghost rings — coloured discs strung
+  // across the frame are a camera defect, and they land on top of whatever
+  // planet you came to look at. ──
   const flareMat = new THREE.SpriteMaterial({
     map: flareTex,
     transparent: true,
@@ -903,40 +910,14 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
     blending: THREE.AdditiveBlending,
   });
   const flare = new THREE.Sprite(flareMat);
-  flare.scale.set(sunRadius * 6, sunRadius * 6, 1);
+  flare.scale.set(sunRadius * 3, sunRadius * 3, 1);
   flare.name = 'sunFlare';
-  const discTex = flareGhostTexture(false);
-  const ringTex = flareGhostTexture(true);
-  const GHOST_SPECS = [
-    { tex: discTex, k: 0.35, size: 0.035, opacity: 0.35, color: 0x7fd0ff },
-    { tex: ringTex, k: 0.62, size: 0.06, opacity: 0.25, color: 0xffa060 },
-    { tex: discTex, k: 0.85, size: 0.025, opacity: 0.4, color: 0xc0a0ff },
-    { tex: ringTex, k: 1.25, size: 0.09, opacity: 0.18, color: 0x80ffd0 },
-  ];
-  const ghosts = GHOST_SPECS.map((spec) => {
-    const mat = new THREE.SpriteMaterial({
-      map: spec.tex,
-      color: spec.color,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const sprite = new THREE.Sprite(mat);
-    sprite.renderOrder = 999;
-    sprite.visible = false;
-    group.add(sprite);
-    return { sprite, mat, ...spec };
-  });
-
   group.add(flare);
   group.add(promGroup);
 
   let pulse = 0;
   const camFwd = new THREE.Vector3();
   const toSun = new THREE.Vector3();
-  const centre = new THREE.Vector3();
 
   return {
     group,
@@ -949,7 +930,7 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
       }
       // Flare scales with camera distance so it doesn't get monstrous at zoom-in.
       const dist = cameraPos.distanceTo(sunPos);
-      const flareScale = THREE.MathUtils.clamp(dist * 0.42, sunRadius * 5, sunRadius * 24);
+      const flareScale = THREE.MathUtils.clamp(dist * 0.12, sunRadius * 2.4, sunRadius * 7);
       flare.scale.set(flareScale, flareScale, 1);
 
       let vis = 0;
@@ -957,17 +938,8 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
         camera.getWorldDirection(camFwd);
         toSun.copy(sunPos).sub(cameraPos).divideScalar(dist);
         vis = THREE.MathUtils.smoothstep(camFwd.dot(toSun), 0.72, 0.97);
-        centre.copy(cameraPos).addScaledVector(camFwd, dist);
       }
-      flareMat.opacity = 0.3 + 0.4 * vis;
-      for (const g of ghosts) {
-        g.sprite.visible = vis > 0.01;
-        if (!g.sprite.visible) continue;
-        // Ghost positions are group-local; the group sits on the Sun.
-        g.sprite.position.copy(centre).sub(sunPos).multiplyScalar(g.k);
-        g.sprite.scale.setScalar(dist * g.size);
-        g.mat.opacity = g.opacity * vis;
-      }
+      flareMat.opacity = 0.16 + 0.22 * vis;
 
       // Prominences are a close-range detail — from system distance the
       // flat arc planes would read as odd rings, so fade them out beyond
@@ -1010,12 +982,9 @@ export function makeSunExtras(sunRadius: number): SunExtrasHandle {
     },
     dispose() {
       for (const c of corona) c.mat.dispose();
-      for (const g of ghosts) g.mat.dispose();
       flareMat.dispose();
       flareTex.dispose();
       raysTex.dispose();
-      discTex.dispose();
-      ringTex.dispose();
       promGeom.dispose();
       for (const p of proms) p.mat.dispose();
       promTex.dispose();
@@ -1315,6 +1284,11 @@ export function makeSaturnParticleRings(saturnRadius: number, lite: boolean): Sa
         float sunlit = step(0.0, facing * front);
         float lambert = abs(facing);
         float light = mix(0.16 + 0.34 * lambert, 0.28 + 0.9 * lambert, sunlit);
+        // Ice forward-scatters: looking through the unlit face toward the
+        // Sun, the rings glow translucent instead of going dark.
+        vec3 toEye = normalize(cameraPosition - vWorldPos);
+        float forward = pow(max(dot(-toEye, toSun), 0.0), 6.0);
+        light += (1.0 - sunlit) * forward * 0.9 * (1.0 - tex.a * 0.5);
         // Planet shadow: ray from this ring point toward the Sun vs the globe.
         vec3 d = vWorldPos - vCenter;
         float b = dot(d, toSun);
@@ -1923,9 +1897,15 @@ export function makeEarthRocket(earthRadius: number): EarthRocketHandle {
  */
 export interface EarthSatellitesHandle {
   group: THREE.Group;
+  /** The station node (local to `group`) and its collision radius. */
+  station: THREE.Group;
+  stationRadius: number;
   /** `earthPos` — Earth's heliocentric scene position (fixes JWST on the
    *  anti-sunward Sun–Earth line; the Sun sits at the scene origin). */
   update: (epochMs: number, earthPos: THREE.Vector3) => void;
+  /** In Explore Mode the flight deck draws its own target brackets, so the
+   *  sprite labels come off rather than doubling up on them. */
+  setLabels: (visible: boolean) => void;
   dispose: () => void;
 }
 
@@ -2116,8 +2096,15 @@ export function makeEarthSatellites(earthRadius: number, lite: boolean): EarthSa
   const haloA = new THREE.Vector3();
   const haloB = new THREE.Vector3();
 
+  const stationRec = recs.find((r) => r.spec.kind === 'station') ?? recs[0];
+
   return {
     group,
+    station: stationRec.node,
+    stationRadius: b * 1.3,
+    setLabels(visible: boolean) {
+      for (const m of labelMats) m.visible = visible;
+    },
     update(epochMs: number, earthPos: THREE.Vector3) {
       for (const { node, spec } of recs) {
         if (spec.kind === 'jwst') {
@@ -2361,6 +2348,8 @@ const MOON_SPECS: MoonSpec[] = [
 
 export interface PlanetMoonsHandle {
   group: THREE.Group;
+  /** Every moon with its planet, mesh (local to the planet's sub-group) and radius. */
+  moons: { name: string; planet: SolarBodyId; mesh: THREE.Mesh; radius: number }[];
   /** Pins each planet's moon sub-group to its planet, then places every moon
    *  at its epoch-accurate orbital phase (real sidereal periods). */
   update: (epochMs: number, planetPos: (id: SolarBodyId) => THREE.Vector3 | null | undefined) => void;
@@ -2401,6 +2390,12 @@ export function makePlanetMoons(lite: boolean): PlanetMoonsHandle {
 
   return {
     group,
+    moons: recs.map((r) => ({
+      name: r.spec.name,
+      planet: r.spec.planet,
+      mesh: r.mesh,
+      radius: worldRadiusForBody(r.spec.planet) * r.spec.radiusMul,
+    })),
     update(epochMs, planetPos) {
       subgroups.forEach((sub, id) => {
         const p = planetPos(id);

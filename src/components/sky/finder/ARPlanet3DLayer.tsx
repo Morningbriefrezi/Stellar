@@ -34,7 +34,7 @@ const TEX_URL: Record<PId, string> = {
   earth:   '/solar-system/planets/earth.jpg',
   mars:    '/solar-system/planets/mars.jpg',
   jupiter: '/solar-system/planets/jupiter.jpg',
-  saturn:  '/solar-system/planets/saturn-2k.jpg',
+  saturn:  '/solar-system/planets/saturn.jpg',
   uranus:  '/solar-system/planets/uranus.jpg',
   neptune: '/solar-system/planets/neptune.jpg',
 };

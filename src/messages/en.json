@@ -1079,7 +1079,8 @@
       "askTheSky": "Ask the Sky",
       "gearRecommender": "What gear?",
       "clear": "Clear selection",
-      "closeSheet": "Close details — camera stays on this body; zoom out to pick another"
+      "closeSheet": "Close details — camera stays on this body; zoom out to pick another",
+      "openInfo": "Planet info"
     },
     "bodies": {
       "sun": {
@@ -1124,16 +1125,246 @@
       }
     },
     "flight": {
+      "pause": "Pause",
+      "resume": "Resume",
       "explore": "Explore",
       "exit": "Exit flight mode",
       "launch": "Launch",
       "speed": "Speed",
       "kills": "Kills",
       "hull": "Hull",
-      "hint": "W A S D · mouse · Space fire · Shift boost · Q E roll · Esc exit",
+      "hint": "W S thrust · mouse steer · A D yaw · Q E roll · Space fire · Shift boost · 1 2 3 regime · H jump · T target · G align · Z assist · F wings · V eject · C view · Esc exit",
+      "view": "View",
+      "camera": "Camera",
+      "camIn": "Camera closer",
+      "camOut": "Camera farther",
+      "odometer": "Odometer",
+      "shield": "Shield",
+      "energy": "Energy",
+      "altShort": "Alt",
+      "velShort": "Vel",
+      "orbitOf": "{body} orbit",
+      "commsHeader": "Incoming transmission · {from}",
+      "comms": {
+        "centauriPrime": {
+          "l1": "Unknown craft, this is Kaelith Harbour Control. We read your drive signature. You are welcome here.",
+          "l2": "Hold your course above the cloud line. Our freighters keep the lower lanes.",
+          "l3": "We have watched your star for a long time. Your Sun rises in our east, as ours does in yours.",
+          "l4": "Transmission ends. Safe orbits, traveller."
+        }
+      },
+      "hangar": "Hangar",
+      "ships": {
+        "kestrel": "Kestrel",
+        "lance": "Lance"
+      },
+      "eject": "Eject",
+      "board": "Board",
+      "evaOut": "EVA — suit jets",
+      "evaBoard": "EVA — press V to board",
+      "evaBoardTouch": "EVA — tap Board",
       "fire": "Fire",
       "boost": "Boost",
-      "respawn": "Hull lost — respawning near Earth"
+      "brake": "Brake",
+      "speedMode": "Speed mode",
+      "modeLabel": "Mode",
+      "modes": {
+        "cruise": "Cruise",
+        "fast": "Fast",
+        "jump": "Light speed",
+        "eva": "EVA suit"
+      },
+      "kmS": "km/s",
+      "c": "c",
+      "ly": "ly",
+      "near": "Near",
+      "alt": "Altitude",
+      "system": "System",
+      "target": "Target",
+      "foils": "Wings",
+      "foilsOpen": "Open",
+      "foilsLocked": "Locked",
+      "alerts": {
+        "proximity": "Collision — pull up",
+        "entry": "Atmospheric entry",
+        "masslock": "Mass lock — too close to jump",
+        "charging": "Hyperdrive charging → {target}",
+        "jump": "Light speed → {target}",
+        "arrived": "Arrived: {system}",
+        "solar": "Solar proximity — hull heating",
+        "gravity": "Gravity well — fast drive limited",
+        "jumpready": "Jump ready",
+        "hostile": "Hostile contact",
+        "contact": "Unknown contact — scanning",
+        "lowshield": "Low shield",
+        "shielddown": "Shields down",
+        "hullcritical": "Hull critical"
+      },
+      "hullLost": "Hull lost",
+      "respawn": "Respawn in {n}",
+      "systems": {
+        "sol": "Solar System",
+        "alphaCentauri": "Alpha Centauri"
+      },
+      "bodies": {
+        "alphaCenA": "Alpha Centauri A",
+        "alphaCenB": "Alpha Centauri B",
+        "proxima": "Proxima Centauri",
+        "proximaB": "Proxima b",
+        "proximaD": "Proxima d",
+        "alphaCenAc": "Alpha Centauri A c",
+        "centauriPrime": "Centauri Prime",
+        "moon": "Moon",
+        "iss": "ISS",
+        "ceres": "Ceres",
+        "vesta": "Vesta",
+        "phobos": "Phobos",
+        "deimos": "Deimos",
+        "io": "Io",
+        "europa": "Europa",
+        "ganymede": "Ganymede",
+        "callisto": "Callisto",
+        "titan": "Titan",
+        "rhea": "Rhea",
+        "titania": "Titania",
+        "oberon": "Oberon",
+        "triton": "Triton",
+        "charon": "Charon",
+        "voyager1": "Voyager 1",
+        "voyager2": "Voyager 2",
+        "pioneer10": "Pioneer 10",
+        "pioneer11": "Pioneer 11",
+        "newHorizons": "New Horizons"
+      },
+      "launchSub": "Launch sequence",
+      "shipRoles": {
+        "kestrel": "Survey ship",
+        "lance": "Interceptor"
+      },
+      "assistOn": "Assist on",
+      "assistOff": "Assist off",
+      "driveReady": "Drive ready",
+      "driveLocked": "Mass locked",
+      "driveCharging": "Drive engaged",
+      "targets": "Targets",
+      "targetNone": "No target",
+      "targetClear": "Clear target",
+      "align": "Align",
+      "heat": "Heat",
+      "log": "Log",
+      "contacts": "{n} contacts",
+      "noContacts": "No contacts",
+      "region": "Approaching {body}",
+      "discovery": "Discovery",
+      "navJump": "Jump · {system}",
+      "navContact": "Unknown contact",
+      "navKinds": {
+        "star": "Star",
+        "planet": "Planet",
+        "moon": "Moon",
+        "station": "Station",
+        "probe": "Probe",
+        "contact": "Contact",
+        "jump": "Jump"
+      },
+      "discoveries": {
+        "moonPass": {
+          "title": "Lunar low pass",
+          "fact": "The Moon drifts 3.8 cm farther from Earth every year."
+        },
+        "earthOrbit": {
+          "title": "Earth orbit",
+          "fact": "The ISS crosses this altitude sixteen times a day at 7.66 km/s."
+        },
+        "issFlyby": {
+          "title": "Station flyby",
+          "fact": "The ISS is the size of a football field and weighs 420 tonnes."
+        },
+        "marsVisit": {
+          "title": "Mars",
+          "fact": "Olympus Mons stands 21 km high, nearly three Everests."
+        },
+        "venusClouds": {
+          "title": "Venus cloud deck",
+          "fact": "Venus's clouds are sulphuric acid; the surface below is 465 °C."
+        },
+        "mercuryDawn": {
+          "title": "Mercury",
+          "fact": "A day on Mercury lasts 176 Earth days, twice its year."
+        },
+        "beltCrossing": {
+          "title": "Asteroid belt",
+          "fact": "The whole belt weighs less than 4% of the Moon."
+        },
+        "jupiterApproach": {
+          "title": "Jupiter",
+          "fact": "Jupiter has 2.5 times the mass of every other planet combined."
+        },
+        "greatRedSpot": {
+          "title": "Great Red Spot",
+          "fact": "A storm wider than Earth, blowing for at least 190 years."
+        },
+        "europaScan": {
+          "title": "Europa",
+          "fact": "Under Europa's ice lies an ocean with twice Earth's water."
+        },
+        "saturnRings": {
+          "title": "Saturn's rings",
+          "fact": "The rings are 280,000 km across and mostly under 100 m thick."
+        },
+        "titanHaze": {
+          "title": "Titan",
+          "fact": "Titan has rivers and seas of liquid methane under an orange haze."
+        },
+        "uranusTilt": {
+          "title": "Uranus",
+          "fact": "Uranus rolls on its side: its axis is tilted 98 degrees."
+        },
+        "neptuneWinds": {
+          "title": "Neptune",
+          "fact": "Neptune's winds reach 2,100 km/h, the fastest in the solar system."
+        },
+        "plutoHeart": {
+          "title": "Pluto",
+          "fact": "Pluto's heart, Sputnik Planitia, is a nitrogen-ice glacier."
+        },
+        "solarCorona": {
+          "title": "Solar corona",
+          "fact": "The corona is over a million degrees, hotter than the surface."
+        },
+        "probeFound": {
+          "title": "Deep-space probe",
+          "fact": "Voyager 1 is the most distant human-made object, past 160 AU."
+        },
+        "heliopause": {
+          "title": "Heliopause",
+          "fact": "Here the solar wind yields to interstellar space; Voyager 1 crossed it in 2012."
+        },
+        "anomaly": {
+          "title": "Anomalous signal",
+          "fact": "Something scanned the ship. Nothing in the catalogue matches."
+        },
+        "firstBlood": {
+          "title": "First contact, resolved",
+          "fact": "Unknown craft destroyed. Expect company."
+        },
+        "lightSpeed": {
+          "title": "Light speed",
+          "fact": "At c, Alpha Centauri is 4.37 years away. The drive cheats."
+        },
+        "alphaCentauri": {
+          "title": "Alpha Centauri",
+          "fact": "The nearest star system: three suns, 4.37 light years out."
+        },
+        "centauriPrime": {
+          "title": "Centauri Prime",
+          "fact": "An inhabited world. Its harbour control speaks first."
+        },
+        "proximaB": {
+          "title": "Proxima b",
+          "fact": "A rocky world in Proxima's habitable zone, found in 2016."
+        }
+      }
     }
   },
   "missionsPage": {

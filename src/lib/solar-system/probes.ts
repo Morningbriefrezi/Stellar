@@ -9,9 +9,12 @@
 
 import * as THREE from 'three';
 import { sceneRadiusFromAu, type ScaleMode } from '@/lib/solar-system/ephemeris';
+import type { TargetCandidate } from '@/lib/solar-system/flight-targeting';
 
 export interface ProbesHandle {
   group: THREE.Group;
+  /** Live positions, for the flight deck's navigation targets. */
+  targets: TargetCandidate[];
   /** `cameraRadius` — current system-camera radius (0 while a body is focused). */
   update: (epochMs: number, cameraRadius: number) => void;
   dispose: () => void;
@@ -19,6 +22,8 @@ export interface ProbesHandle {
 
 interface ProbeSpec {
   name: string;
+  /** Target id on the flight deck (and its message key). */
+  id: string;
   /** Heliocentric distance (AU) on 2026-01-01. */
   r0Au: number;
   /** Current recession speed (AU/year). */
@@ -33,11 +38,11 @@ const MS_YEAR = 365.25 * 86_400_000;
 
 // Positions cross-checked against the mission "where are they now" trackers.
 const PROBE_SPECS: ProbeSpec[] = [
-  { name: 'VOYAGER 1', r0Au: 169.0, auPerYear: 3.57, eclLonDeg: 255.3, eclLatDeg: 35.0 },
-  { name: 'VOYAGER 2', r0Au: 141.4, auPerYear: 3.16, eclLonDeg: 289.9, eclLatDeg: -32.5 },
-  { name: 'PIONEER 10', r0Au: 137.1, auPerYear: 2.54, eclLonDeg: 76.0, eclLatDeg: 3.0 },
-  { name: 'PIONEER 11', r0Au: 116.6, auPerYear: 2.3, eclLonDeg: 292.5, eclLatDeg: 12.5 },
-  { name: 'NEW HORIZONS', r0Au: 61.5, auPerYear: 2.94, eclLonDeg: 293.3, eclLatDeg: -1.5 },
+  { name: 'VOYAGER 1', id: 'voyager1', r0Au: 169.0, auPerYear: 3.57, eclLonDeg: 255.3, eclLatDeg: 35.0 },
+  { name: 'VOYAGER 2', id: 'voyager2', r0Au: 141.4, auPerYear: 3.16, eclLonDeg: 289.9, eclLatDeg: -32.5 },
+  { name: 'PIONEER 10', id: 'pioneer10', r0Au: 137.1, auPerYear: 2.54, eclLonDeg: 76.0, eclLatDeg: 3.0 },
+  { name: 'PIONEER 11', id: 'pioneer11', r0Au: 116.6, auPerYear: 2.3, eclLonDeg: 292.5, eclLatDeg: 12.5 },
+  { name: 'NEW HORIZONS', id: 'newHorizons', r0Au: 61.5, auPerYear: 2.94, eclLonDeg: 293.3, eclLatDeg: -1.5 },
 ];
 
 function dotTexture(): THREE.CanvasTexture {
@@ -149,9 +154,11 @@ export function makeDeepSpaceProbes(mode: ScaleMode): ProbesHandle {
 
   const pos = new THREE.Vector3();
   const past = new THREE.Vector3();
+  const targets: TargetCandidate[] = recs.map((rec) => ({ id: rec.spec.id, kind: 'probe', position: new THREE.Vector3() }));
 
   return {
     group,
+    targets,
     update(epochMs: number, cameraRadius: number) {
       // Labels live in the outer-system band: fade in once the camera leaves
       // the inner planets, fade out again as the stellar tier takes over.
@@ -162,12 +169,14 @@ export function makeDeepSpaceProbes(mode: ScaleMode): ProbesHandle {
           : THREE.MathUtils.smoothstep(camR, 7, 13) *
             (1 - THREE.MathUtils.smoothstep(camR, 260, 700));
 
-      for (const rec of recs) {
+      for (let i = 0; i < recs.length; i++) {
+        const rec = recs[i];
         const yr = (epochMs - T0_MS) / MS_YEAR;
         const au = Math.max(5, rec.spec.r0Au + rec.spec.auPerYear * yr);
         const r = sceneRadiusFromAu(au, mode);
         pos.copy(rec.dir).multiplyScalar(r);
         rec.dot.position.copy(pos);
+        targets[i].position.copy(pos);
         rec.label.position.copy(pos);
         rec.label.position.x += 0.14;
 

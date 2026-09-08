@@ -418,6 +418,12 @@
   letter-spacing: 0.06em;
   opacity: 0.85;
 }
+@media (max-width: 680px) {
+  /* The phone dock is three rows tall; the hint rides above it. */
+  .solar-system__viewport-hint--compact {
+    bottom: calc(178px + env(safe-area-inset-bottom));
+  }
+}
 
 /* Floating timelapse pill — hovers over the map, bottom centre. */
 .solar-system__dockbar {
@@ -793,230 +799,334 @@
   color: #5eead4;
 }
 
-/* ───────────────────────── Explore Mode — flight HUD ───────────────────────── */
+@media (max-width: 680px) {
+  .solar-system__dockbar {
+    gap: 5px;
+    padding: 4px 5px;
+  }
+  .solar-system__dockbtn {
+    width: 36px;
+    height: 36px;
+  }
+}
+.solar-system__ratebtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+.solar-system__ratebtn svg {
+  opacity: 0.7;
+  transition: transform 140ms ease;
+}
+.solar-system__ratebtn.is-active svg { transform: rotate(180deg); }
+.solar-system__rate-pop {
+  position: absolute;
+  z-index: 16;
+  left: 50%;
+  bottom: calc(56px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  border-radius: 14px;
+  background: rgba(5, 9, 18, 0.92);
+  border: 0.5px solid rgba(248, 244, 236, 0.14);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.solar-system__rate-item {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 0.5px solid transparent;
+  background: transparent;
+  color: rgba(232, 236, 244, 0.85);
+  font-family: var(--font-mono, 'JetBrains Mono'), monospace;
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.solar-system__rate-item::before { content: none; }
+.solar-system__rate-item.is-active {
+  border-color: rgba(255, 179, 71, 0.45);
+  background: rgba(255, 179, 71, 0.12);
+  color: #ffd79a;
+}
 
+/* Explore: instruments stay at the edges; the flight path stays open. */
 .flight-hud {
+  --hud-ink: var(--text-primary);
+  --hud-dim: var(--text-secondary);
+  --hud-line: color-mix(in srgb, var(--seafoam) 32%, transparent);
+  --hud-accent: var(--seafoam);
   position: absolute;
   inset: 0;
   z-index: 18;
   pointer-events: none;
-  font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-  color: rgba(248, 244, 236, 0.9);
+  color: var(--hud-ink);
+  font: 400 12px var(--font-mono), monospace;
+  font-variant-numeric: tabular-nums;
+}
+.flight-hud button {
+  pointer-events: auto;
+  min-height: 44px;
+  border: 1px solid var(--hud-line);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--canvas) 50%, transparent);
+  color: var(--hud-ink);
+  font: inherit;
+  cursor: pointer;
+  touch-action: none;
+  padding: 0;
+}
+.flight-hud button::before { content: none; }
+.flight-hud button:focus-visible { outline: 2px solid var(--hud-accent); outline-offset: 4px; }
+.flight-hud button:active { border-color: var(--hud-accent); }
+.flight-hud__launch {
+  position: absolute;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+.flight-hud__launch button { padding: 0 14px; white-space: nowrap; }
+.flight-hud__explore { display: flex; align-items: center; gap: 8px; }
+.flight-hud__ship { color: var(--hud-dim) !important; }
+.flight-hud__head {
+  position: absolute;
+  top: max(20px, env(safe-area-inset-top));
+  left: max(20px, env(safe-area-inset-left));
+  display: grid;
+  gap: 5px;
+  max-width: calc(100% - 100px);
+  text-shadow: 0 1px 4px var(--canvas);
+}
+.flight-hud__place { letter-spacing: 0.24em; text-transform: uppercase; }
+.flight-hud__reading { display: flex; gap: 14px; }
+.flight-hud__reading > span:first-child { width: 28px; color: var(--hud-dim); text-transform: uppercase; letter-spacing: 0.15em; }
+.flight-hud__status { color: var(--hud-accent); max-width: 270px; line-height: 1.5; }
+.flight-hud__status:empty { display: none; }
+.flight-hud__pause {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  display: flex;
+  gap: 8px;
+}
+.flight-hud__pause button { width: 44px; display: grid; place-items: center; }
+.flight-hud__marker { position: absolute; left: 0; top: 0; padding: 5px 8px; border-inline: 1px solid var(--hud-line); letter-spacing: 0.12em; text-transform: uppercase; text-shadow: 0 1px 4px var(--canvas); }
+.flight-hud__marker[hidden] { display: none; }
+.flight-hud__reticle { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; border: 1px solid var(--hud-dim); border-radius: 50%; opacity: 0.5; }
+.flight-hud__console {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: 60px 64px minmax(88px, 1fr) 100px;
+  align-items: center;
+  gap: 6px;
+  max-width: 820px;
+  margin-inline: auto;
+}
+.flight-hud .flight-hud__radar { border: 0; background: transparent; width: 60px; height: 60px; }
+.flight-hud__radar canvas { width: 100%; height: 100%; }
+.flight-hud__odometer { display: grid; gap: 6px; font-size: 14px; }
+.flight-hud__odometer > span:first-child { font-size: 10px; color: var(--hud-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.flight-hud small { font-size: 10px; color: var(--hud-dim); }
+.flight-hud .flight-hud__speed {
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--canvas) 35%, transparent);
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 150px;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.flight-hud__speed svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(135deg); fill: none; stroke: var(--hud-line); stroke-width: 2; stroke-dasharray: 255 340; }
+.flight-hud__speed svg .flight-hud__speed-arc { stroke: var(--hud-accent); stroke-width: 4; stroke-dasharray: calc(var(--speed, 0) * 0.75) 1; }
+.flight-hud__mode { color: var(--hud-dim); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; }
+.flight-hud__speed-value { font-size: clamp(17px, 4vw, 30px); line-height: 1.2; }
+.flight-hud__systems { display: grid; gap: 10px; }
+.flight-hud__sys { display: grid; grid-template-columns: 14px 1fr 28px; gap: 5px; align-items: center; }
+.flight-hud__sys svg { color: var(--hud-dim); }
+.flight-hud__sys-name { display: none; }
+.flight-hud__track { height: 4px; background: var(--hud-line); overflow: hidden; border-radius: 1px; }
+.flight-hud__track > span { display: block; height: 100%; transform-origin: left; background: var(--hud-accent); }
+.flight-hud__sys:first-child .flight-hud__track > span { background: var(--hud-ink); }
+.flight-hud__percent { font-size: 10px; text-align: right; }
+.flight-hud__pad { position: absolute; inset: 0 auto 140px 0; width: 58%; height: calc(100% - 140px); pointer-events: auto; touch-action: none; }
+.flight-hud__touch { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: calc(142px + env(safe-area-inset-bottom)); display: flex; gap: 8px; }
+.flight-hud__touch button { width: 44px; border: 0; background: transparent; opacity: 0.55; display: grid; place-items: center; }
+.flight-hud__touch button:active { opacity: 1; background: color-mix(in srgb, var(--seafoam) 12%, transparent); }
+.flight-hud[data-paused='true'] .flight-hud__reticle { visibility: hidden; }
+@media (min-width: 600px) {
+  .flight-hud__console { grid-template-columns: 90px 110px 150px 1fr; gap: 24px; bottom: max(20px, env(safe-area-inset-bottom)); }
+  .flight-hud .flight-hud__radar { width: 90px; height: 90px; }
+  .flight-hud__sys { grid-template-columns: 16px 62px 1fr 38px; gap: 9px; }
+  .flight-hud__sys-name { display: block; font-size: 11px; text-transform: uppercase; }
+  .flight-hud__percent, .flight-hud small, .flight-hud__mode { font-size: 11px; }
+  .flight-hud__head { top: max(28px, env(safe-area-inset-top)); left: max(28px, env(safe-area-inset-left)); font-size: 14px; }
+  .flight-hud__odometer { font-size: 20px; }
+}
+@media (max-height: 500px) {
+  .flight-hud__console { grid-template-columns: 48px 76px 72px 130px; max-width: 400px; gap: 14px; bottom: max(6px, env(safe-area-inset-bottom)); }
+  .flight-hud .flight-hud__radar { width: 48px; height: 48px; }
+  .flight-hud__sys { grid-template-columns: 14px 1fr 30px; gap: 5px; }
+  .flight-hud__sys-name { display: none; }
+  .flight-hud__speed-value { font-size: 16px; }
+  .flight-hud__odometer { font-size: 14px; }
+  .flight-hud__touch { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .flight-hud__pad { bottom: 85px; height: calc(100% - 85px); }
 }
 
-.flight-hud__explore {
-  pointer-events: auto;
+/* ──────────────────── planet info chip (opens the facts card) ────────────────────
+   Picking a body no longer throws a panel over it. A callout docks beside the
+   planet — leader line first, then the tag — and the facts card only appears
+   once the chip is pressed. */
+
+.solar-system__infochip {
   position: absolute;
-  right: max(12px, env(safe-area-inset-right));
-  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 66px);
-  display: inline-flex;
+  z-index: 18;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 999px;
-  border: 0.5px solid rgba(94, 234, 212, 0.45);
-  background: rgba(5, 9, 18, 0.84);
-  color: #5eead4;
+  gap: 9px;
+  padding: 7px 12px;
+  min-height: 0;
+  border-radius: 12px;
+  border: 0.5px solid rgba(248, 244, 236, 0.18);
+  background: rgba(6, 10, 18, 0.82);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+  animation: solar-chip-in 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.solar-system__infochip::before { content: none; }
+.solar-system__infochip:hover { border-color: rgba(255, 179, 71, 0.5); }
+.solar-system__infochip:focus-visible {
+  outline: 2px solid var(--terracotta, #ffb347);
+  outline-offset: 2px;
+}
+.solar-system__infochip svg { color: var(--terracotta, #ffb347); flex-shrink: 0; }
+
+.solar-system__infochip-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.solar-system__infochip-name {
   font-family: var(--font-display, 'Orbitron'), system-ui, sans-serif;
   font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  cursor: pointer;
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  transition: border-color 140ms ease, background 140ms ease;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.flight-hud__explore:hover {
-  border-color: rgba(94, 234, 212, 0.85);
-  background: rgba(8, 20, 24, 0.9);
+.solar-system__infochip-cta {
+  font-family: var(--mono, ui-monospace), monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 179, 71, 0.9);
+  line-height: 1;
 }
 
-/* On phones the drag hint sits directly above the dock, so the button
-   stacks above the hint instead of landing on top of its text. The hint
-   wraps to two or three lines in Georgian, hence the generous clearance. */
-@media (max-width: 680px) {
-  .flight-hud__explore {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 132px);
+/* Leader line back to the planet — draws out from the chip's docked edge. */
+.solar-system__infochip::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 1px;
+  background: rgba(255, 179, 71, 0.55);
+  transform-origin: left center;
+  animation: solar-leader-draw 220ms ease-out both;
+}
+.solar-system__infochip[data-side='right']::after { left: -20px; transform-origin: right center; }
+.solar-system__infochip[data-side='left']::after  { right: -20px; }
+.solar-system__infochip[data-side='bottom']::after { display: none; }
+
+@keyframes solar-chip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes solar-leader-draw {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* ──────────────────── facts card: telemetry-style write-in ────────────────────
+   The frame sweeps open from the planet's side, then each block wipes in left
+   to right, the way a mission readout fills a panel line by line. */
+
+.solar-system__popover .solar-system__popcard {
+  animation: solar-popcard-in 300ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.solar-system__popover[data-side='left'] .solar-system__popcard {
+  animation-name: solar-popcard-in-left;
+}
+
+@keyframes solar-popcard-in {
+  from { opacity: 0; clip-path: inset(0 100% 0 0 round 14px); }
+  to   { opacity: 1; clip-path: inset(0 0 0 0 round 14px); }
+}
+@keyframes solar-popcard-in-left {
+  from { opacity: 0; clip-path: inset(0 0 0 100% round 14px); }
+  to   { opacity: 1; clip-path: inset(0 0 0 0 round 14px); }
+}
+
+.solar-system__popcard > * {
+  animation: solar-write-in 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.solar-system__popcard > *:nth-child(1) { animation-delay: 180ms; }
+.solar-system__popcard > *:nth-child(2) { animation-delay: 250ms; }
+.solar-system__popcard > *:nth-child(3) { animation-delay: 310ms; }
+.solar-system__popcard > *:nth-child(4) { animation-delay: 370ms; }
+.solar-system__popcard > *:nth-child(5) { animation-delay: 430ms; }
+.solar-system__popcard > *:nth-child(6) { animation-delay: 490ms; }
+
+/* Rows fill in sequence inside each block, so the numbers arrive one at a time. */
+.solar-system__popcard .solar-system__dl > div {
+  animation: solar-write-in 220ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.solar-system__popcard .solar-system__dl > div:nth-child(1) { animation-delay: 300ms; }
+.solar-system__popcard .solar-system__dl > div:nth-child(2) { animation-delay: 345ms; }
+.solar-system__popcard .solar-system__dl > div:nth-child(3) { animation-delay: 390ms; }
+.solar-system__popcard .solar-system__dl > div:nth-child(4) { animation-delay: 435ms; }
+.solar-system__popcard .solar-system__dl > div:nth-child(5) { animation-delay: 480ms; }
+.solar-system__popcard .solar-system__dl > div:nth-child(6) { animation-delay: 525ms; }
+
+@keyframes solar-write-in {
+  from { opacity: 0; clip-path: inset(0 100% 0 0); }
+  to   { opacity: 1; clip-path: inset(0 -4px 0 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .solar-system__infochip,
+  .solar-system__infochip::after,
+  .solar-system__popover .solar-system__popcard,
+  .solar-system__popcard > *,
+  .solar-system__popcard .solar-system__dl > div {
+    animation: none;
   }
 }
 
-.flight-hud__exit {
-  position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  left: max(10px, env(safe-area-inset-left));
-  z-index: 2;
-}
-
-.flight-hud__countdown {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.flight-hud__count {
-  font-family: var(--font-display, 'Orbitron'), system-ui, sans-serif;
-  font-size: clamp(56px, 12vw, 120px);
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  color: #fff;
-  text-shadow: 0 0 24px rgba(94, 234, 212, 0.6);
-  animation: flight-count 900ms ease-out both;
-}
-@keyframes flight-count {
-  0% { transform: scale(1.35); opacity: 0; }
-  20% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.92); opacity: 0.7; }
-}
-
-.flight-hud__flash {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center, rgba(255, 60, 60, 0) 45%, rgba(255, 60, 60, 0.9) 100%);
-  opacity: 0;
-}
-
-.flight-hud__speed {
-  position: absolute;
-  top: calc(max(10px, env(safe-area-inset-top)) + 58px);
-  left: max(12px, env(safe-area-inset-left));
-  display: grid;
-  grid-template-columns: auto auto;
-  column-gap: 12px;
-  row-gap: 2px;
-  align-items: baseline;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(6, 9, 14, 0.66);
-  border: 0.5px solid rgba(248, 244, 236, 0.1);
-}
-.flight-hud__label {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(248, 244, 236, 0.55);
-}
-.flight-hud__value {
-  font-size: 15px;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-}
-
-.flight-hud__radar {
-  position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  border-radius: 50%;
-}
-
-.flight-hud__hull {
-  position: absolute;
-  left: 50%;
-  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 12px);
-  transform: translateX(-50%);
-  width: min(260px, 60vw);
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  align-items: center;
-}
-.flight-hud__hull-row {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-}
-.flight-hud__hp {
-  width: 100%;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(248, 244, 236, 0.14);
-  overflow: hidden;
-}
-.flight-hud__hp-fill {
-  height: 100%;
-  width: 100%;
-  background: #5eead4;
-  transition: width 160ms ease-out;
-}
-.flight-hud__hint {
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(248, 244, 236, 0.45);
-  text-align: center;
-}
-
-.flight-hud__respawn {
-  position: absolute;
-  left: 50%;
-  top: 42%;
-  transform: translate(-50%, -50%);
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: rgba(6, 9, 14, 0.8);
-  border: 0.5px solid rgba(255, 90, 90, 0.5);
-  color: #ff8a8a;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.flight-hud__pad {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: auto;
-  touch-action: none;
-}
-
-.flight-hud__fire,
-.flight-hud__boost {
-  pointer-events: auto;
-  position: absolute;
-  z-index: 2;
-  right: max(16px, env(safe-area-inset-right));
-  border-radius: 50%;
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-.flight-hud__fire {
-  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 8px);
-  width: 68px;
-  height: 68px;
-  border: 2px solid rgba(255, 90, 90, 0.8);
-  background: rgba(255, 60, 60, 0.28);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.flight-hud__fire:active {
-  background: rgba(255, 60, 60, 0.55);
-}
-.flight-hud__fire-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #ff5a5a;
-}
-.flight-hud__boost {
-  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 92px);
-  width: 54px;
-  height: 54px;
-  min-height: 0;
-  border: 1.5px solid rgba(94, 234, 212, 0.7);
-  background: rgba(94, 234, 212, 0.18);
-  color: #5eead4;
-  font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.flight-hud__boost:active {
-  background: rgba(94, 234, 212, 0.4);
+@media (max-width: 380px) {
+  .flight-hud__console { grid-template-columns: 48px 50px 78px minmax(84px, 1fr); }
+  .flight-hud .flight-hud__radar { width: 48px; height: 48px; }
 }
