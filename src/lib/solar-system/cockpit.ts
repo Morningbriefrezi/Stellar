@@ -45,10 +45,18 @@ const INK = 'rgba(248,244,236,0.9)';
 const ALERT_TEXT: Record<string, string> = {
   proximity: 'PULL UP',
   entry: 'RE-ENTRY',
+  solar: 'SOLAR PROXIMITY',
   masslock: 'MASS LOCK',
+  gravity: 'GRAVITY WELL',
   charging: 'DRIVE CHARGING',
   jump: 'LIGHT SPEED',
+  jumpready: 'JUMP READY',
   arrived: 'ARRIVED',
+  hostile: 'HOSTILE',
+  contact: 'CONTACT',
+  lowshield: 'LOW SHIELD',
+  shielddown: 'SHIELDS DOWN',
+  hullcritical: 'HULL CRITICAL',
 };
 
 export function makeCockpit(accent: number): CockpitHandle {
@@ -83,6 +91,34 @@ export function makeCockpit(accent: number): CockpitHandle {
   }
   const brow = add(new THREE.BoxGeometry(3.3, 0.1, 0.12), trim);
   brow.position.set(0, 2.62, 1.0);
+  // The canopy itself: a faint tinted pane with one soft reflection streak,
+  // so the world reads as seen through glass rather than through a hole.
+  const glassTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 256;
+    const g = c.getContext('2d')!;
+    const base = g.createLinearGradient(0, 0, 0, 256);
+    base.addColorStop(0, 'rgba(120,160,210,0.16)');
+    base.addColorStop(0.5, 'rgba(120,160,210,0.03)');
+    base.addColorStop(1, 'rgba(120,160,210,0.1)');
+    g.fillStyle = base;
+    g.fillRect(0, 0, 256, 256);
+    const streak = g.createLinearGradient(0, 0, 256, 256);
+    streak.addColorStop(0.3, 'rgba(255,255,255,0)');
+    streak.addColorStop(0.42, 'rgba(255,255,255,0.09)');
+    streak.addColorStop(0.47, 'rgba(255,255,255,0)');
+    g.fillStyle = streak;
+    g.fillRect(0, 0, 256, 256);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const glassMat = new THREE.MeshBasicMaterial({ map: glassTex, transparent: true, depthWrite: false });
+  owned.push(glassMat);
+  const canopyPane = add(new THREE.PlaneGeometry(4.6, 2.2), glassMat);
+  canopyPane.position.set(0, 1.9, 1.5);
+  canopyPane.rotation.set(-0.18, Math.PI, 0, 'YXZ');
   // Overhead panel under the brow — breaker row with one amber guard.
   const overhead = add(new THREE.BoxGeometry(1.6, 0.1, 0.5), dark);
   overhead.position.set(0, 2.42, 0.55);
@@ -365,12 +401,13 @@ export function makeCockpit(accent: number): CockpitHandle {
     ctx.globalAlpha = 0.8;
     const drive = tel.jumpPhase === 'none' ? tel.mode.toUpperCase() : 'HYPERDRIVE';
     ctx.fillText(`${drive} · ${tel.speedC.toFixed(3)} C`, cx, 88);
-    ctx.fillText(`HULL ${Math.round(tel.hp)}%`, cx, h - 140);
+    ctx.fillText(`SHLD ${Math.round(tel.shield)}  ·  HULL ${Math.round(tel.hp)}`, cx, h - 140);
 
     // Caution caption, blinking, under the boresight.
     const caution = ALERT_TEXT[tel.alert] ?? '';
     if (caution && Math.sin(t * 7) > -0.25) {
-      ctx.fillStyle = tel.alert === 'proximity' || tel.alert === 'entry' ? '#ff5a5a' : '#ffb347';
+      const danger = tel.alert === 'proximity' || tel.alert === 'entry' || tel.alert === 'solar' || tel.alert === 'hostile' || tel.alert === 'shielddown' || tel.alert === 'hullcritical';
+      ctx.fillStyle = danger ? '#ff5a5a' : '#ffb347';
       ctx.globalAlpha = 1;
       ctx.font = `600 30px ${MONO}`;
       ctx.fillText(caution, cx, cy + 120);
@@ -405,6 +442,7 @@ export function makeCockpit(accent: number): CockpitHandle {
     cell('VEL', `${km(tel.speedKmS)} km/s`, '#ffffff');
     cell('ALT', tel.nearId ? `${km(tel.nearAltKm)} km` : '—', accentCss);
     cell('MODE', (tel.jumpPhase === 'none' ? tel.mode : 'jump').toUpperCase(), '#ffb347');
+    cell('SHLD', `${Math.round(tel.shield)}`, tel.shield > 25 ? '#8fd4ff' : '#ff5a5a');
     cell('HULL', `${Math.round(tel.hp)}`, tel.hp > 50 ? '#ffffff' : '#ff5a5a');
     ctx.textBaseline = 'alphabetic';
     odo.tex.needsUpdate = true;
@@ -463,15 +501,16 @@ export function makeCockpit(accent: number): CockpitHandle {
       const fill = Math.max(0, Math.min(1, k)) * 180;
       ctx.fillRect(x + 2, 236 - fill, 40, fill);
     };
-    bar(340, 'HULL', tel.hp / tel.maxHp, tel.hp > 50 ? accentCss : tel.hp > 25 ? '#ffb347' : '#ff5a5a');
-    bar(410, 'HEAT', tel.heat, tel.heat > 0.6 ? '#ff5a5a' : '#ffb347');
+    bar(300, 'SHLD', tel.shield / tel.maxShield, tel.shield > 25 ? '#8fd4ff' : '#ff5a5a');
+    bar(356, 'HULL', tel.hp / tel.maxHp, tel.hp > 50 ? accentCss : tel.hp > 25 ? '#ffb347' : '#ff5a5a');
+    bar(412, 'HEAT', tel.heat, tel.heat > 0.6 ? '#ff5a5a' : '#ffb347');
     // Hyperdrive charge column — dead until the drive spools.
-    bar(480, 'DRIVE', tel.jumpT, tel.jumpPhase === 'none' ? 'rgba(188,208,255,0.2)' : '#bcd0ff');
+    bar(468, 'DRIVE', tel.jumpT, tel.jumpPhase === 'none' ? 'rgba(188,208,255,0.2)' : '#bcd0ff');
 
     // Kill tally and the caution lamp.
     ctx.fillStyle = DIM;
     ctx.font = `600 15px ${MONO}`;
-    ctx.fillText('KILLS', 552, 44);
+    ctx.fillText('KILLS', 556, 44);
     ctx.fillStyle = INK;
     ctx.font = `600 34px ${MONO}`;
     ctx.fillText(String(tel.kills), 552, 84);
@@ -648,8 +687,8 @@ export function makeCockpit(accent: number): CockpitHandle {
       const beat = Math.sin(clock * 6) > 0;
       const lamp = (i: number, on: boolean, colour: number) =>
         lampMats[i].color.setHex(on && beat ? colour : 0x1a1410);
-      lamp(0, !!tel.alert, tel.alert === 'proximity' || tel.alert === 'entry' ? 0xff5a5a : 0xffb347);
-      lamp(1, tel.hp < 60, 0xff5a5a);
+      lamp(0, !!tel.alert, tel.alert === 'proximity' || tel.alert === 'entry' || tel.alert === 'solar' ? 0xff5a5a : 0xffb347);
+      lamp(1, tel.hp < 60 || tel.shield <= 0, 0xff5a5a);
       lamp(2, tel.heat > 0.2, 0xffb347);
 
       // Panels refresh five times a second — the eye cannot tell, and the
@@ -678,6 +717,7 @@ export function makeCockpit(accent: number): CockpitHandle {
     dispose() {
       for (const g of geoms) g.dispose();
       for (const m of owned) m.dispose();
+      glassTex.dispose();
       hud.tex.dispose();
       odo.tex.dispose();
       cluster.tex.dispose();

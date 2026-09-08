@@ -490,8 +490,11 @@ const ATMOSPHERE_VERT = `
   }
 `;
 
-// Rayleigh-style limb: fresnel rim that is brightest on the sunlit side and
-// fades around the terminator. The Sun sits at the scene origin.
+// Rayleigh-style limb: a fresnel rim that is brightest on the sunlit side
+// and fades around the terminator, with a softer inner glow so the air reads
+// as a layer with depth rather than a ring drawn round the disc, and a warm
+// tint where the light grazes the terminator. The Sun sits at the scene
+// origin.
 const ATMOSPHERE_FRAG = `
   uniform vec3 uColor;
   uniform float uIntensity;
@@ -501,10 +504,18 @@ const ATMOSPHERE_FRAG = `
   varying vec3 vWorldPos;
   varying vec3 vWorldNrm;
   void main() {
-    float fresnel = pow(1.0 - max(dot(vNormal, vView), 0.0), uPower);
+    float ndv = max(dot(vNormal, vView), 0.0);
+    // The rim peaks just inside the shell's silhouette and fades to nothing
+    // at it, so the air thins out instead of ending in a drawn line.
+    float rim = pow(1.0 - ndv, uPower) * smoothstep(0.0, 0.22, ndv) * 1.8;
+    float body = pow(1.0 - ndv, uPower * 0.45) * 0.24;
     float sunFacing = dot(normalize(vWorldNrm), normalize(-vWorldPos));
-    float lit = 0.28 + 0.72 * smoothstep(-0.35, 0.4, sunFacing);
-    gl_FragColor = vec4(uColor * fresnel * uIntensity * lit, fresnel * lit);
+    float lit = 0.22 + 0.78 * smoothstep(-0.35, 0.4, sunFacing);
+    // Grazing light at the terminator scatters long wavelengths.
+    float dusk = smoothstep(-0.25, 0.05, sunFacing) * (1.0 - smoothstep(0.05, 0.4, sunFacing));
+    vec3 col = mix(uColor, uColor * vec3(1.5, 0.95, 0.55) + vec3(0.25, 0.08, 0.0), dusk * 0.7);
+    float a = (rim + body) * lit;
+    gl_FragColor = vec4(col * a * uIntensity, a);
   }
 `;
 
@@ -600,7 +611,7 @@ export function makeEarthExtras(earthRadius: number, lite: boolean): EarthExtras
   }
 
   // Atmosphere fresnel shell
-  const atmosphereMesh = makeAtmosphereShell(earthRadius, 0x6ab7ff, 1.06, 1.3, 2.4);
+  const atmosphereMesh = makeAtmosphereShell(earthRadius, 0x6ab7ff, 1.075, 1.5, 2.6);
 
   // Moon — orbiting parent group; group orbits, moon spins. The procedural
   // fallback texture swaps to the real NASA LRO-derived global map on load,
@@ -1273,6 +1284,11 @@ export function makeSaturnParticleRings(saturnRadius: number, lite: boolean): Sa
         float sunlit = step(0.0, facing * front);
         float lambert = abs(facing);
         float light = mix(0.16 + 0.34 * lambert, 0.28 + 0.9 * lambert, sunlit);
+        // Ice forward-scatters: looking through the unlit face toward the
+        // Sun, the rings glow translucent instead of going dark.
+        vec3 toEye = normalize(cameraPosition - vWorldPos);
+        float forward = pow(max(dot(-toEye, toSun), 0.0), 6.0);
+        light += (1.0 - sunlit) * forward * 0.9 * (1.0 - tex.a * 0.5);
         // Planet shadow: ray from this ring point toward the Sun vs the globe.
         vec3 d = vWorldPos - vCenter;
         float b = dot(d, toSun);

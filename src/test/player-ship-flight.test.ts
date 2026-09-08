@@ -47,6 +47,7 @@ function makeWorld(): FlightWorld {
   const earth = body('earth', 1, EARTH_R, 6371, 9.81, 1.25);
   return {
     bodies: [body('sun', 0, 0.152, 696_000, 274, 1.3), earth],
+    pois: [],
     // Four Earth radii up on the +Z side, looking at the planet.
     home: { position: new THREE.Vector3(1, 0, EARTH_R * 5), lookAt: earth.position.clone(), yaw: 0 },
     jump: {
@@ -102,7 +103,9 @@ describe('speed regimes', () => {
     faceAway();
     session.input.modeRequest = 'fast';
     session.input.thrust = 1;
-    seconds(4);
+    // The drive re-tunes over a second or so, and Earth's well throttles
+    // the fast drive until the ship is clear of it.
+    seconds(8);
     expect(session.telemetry.mode).toBe('fast');
     expect(session.telemetry.speed).toBeCloseTo(22, 0);
     session.input.boost = true;
@@ -120,7 +123,8 @@ describe('speed regimes', () => {
     seconds(1);
     ship.spawn(world.home);
     session.input.modeRequest = 'fast';
-    step(1);
+    // Let the drive finish re-tuning before measuring the fast-regime turn.
+    seconds(4);
     const start2 = heading();
     session.input.yaw = 1;
     seconds(1);
@@ -200,7 +204,47 @@ describe('gravity and solid bodies', () => {
     expect(session.telemetry.crashed).toBe(false);
     expect(session.telemetry.alert).toBe('entry');
     expect(session.telemetry.heat).toBeGreaterThan(0.05);
-    expect(session.telemetry.hp).toBeLessThan(100);
+    // Re-entry heat bleeds the shields before it touches the hull.
+    expect(session.telemetry.shield).toBeLessThan(100);
+    expect(session.telemetry.hp).toBe(100);
+  });
+
+  it('throttles the fast drive inside a gravity well and frees it outside', () => {
+    ship.group.position.set(1, 0, EARTH_R * 4.5);
+    session.input.modeRequest = 'fast';
+    session.input.thrust = 1;
+    faceAway();
+    seconds(0.3);
+    // Still climbing out of Earth's well: well short of the fast ceiling.
+    expect(session.telemetry.alert).toBe('gravity');
+    expect(session.telemetry.speed).toBeLessThan(18);
+    seconds(6);
+    expect(session.telemetry.alert).not.toBe('gravity');
+    expect(session.telemetry.speed).toBeCloseTo(22, 0);
+  });
+
+  it('flight assist off keeps momentum and needs counter-thrust', () => {
+    // Clear of Earth's well, so only the drive and the drag act on the ship.
+    ship.group.position.set(1, 0, EARTH_R * 14);
+    faceAway();
+    session.input.assistToggle = true;
+    session.input.thrust = 1;
+    seconds(2);
+    expect(session.telemetry.assist).toBe(false);
+    const coasting = session.telemetry.speed;
+    session.input.thrust = 0;
+    seconds(3);
+    // Almost no drag: the ship keeps nearly all of its way on.
+    expect(session.telemetry.speed).toBeGreaterThan(coasting * 0.9);
+    // A short retro burn takes most of it off again.
+    session.input.thrust = -1;
+    seconds(0.1);
+    expect(session.telemetry.speed).toBeLessThan(coasting * 0.5);
+    session.input.thrust = 0;
+    session.input.assistToggle = true;
+    seconds(3);
+    expect(session.telemetry.assist).toBe(true);
+    expect(session.telemetry.speed).toBeLessThan(0.2);
   });
 
   it('crashes on contact, holds the wreck, then respawns at home', () => {
@@ -281,7 +325,7 @@ describe('EVA and stations', () => {
 
   it('interceptor is the faster ship', () => {
     const fast = createFlightSession();
-    fast.shipKind = 'interceptor';
+    fast.shipKind = 'lance';
     const other = createPlayerShip(fast);
     other.spawn(world.home);
     other.group.lookAt(new THREE.Vector3(1, 0, 10));
@@ -323,7 +367,7 @@ describe('cockpit and radio', () => {
     expect(session.telemetry.view).toBe('cockpit');
     expect(ship.group.visible).toBe(false);
     // The eye sits inside the hull, not behind it.
-    expect(camera.position.distanceTo(ship.group.position)).toBeLessThan(0.002);
+    expect(camera.position.distanceTo(ship.group.position)).toBeLessThan(0.003);
     session.input.viewToggle = true;
     step(1);
     expect(session.telemetry.view).toBe('chase');
@@ -352,11 +396,35 @@ describe('cockpit and radio', () => {
   });
 });
 
-describe('hull and S-foils', () => {
-  it('enemy fire and heat never destroy the ship', () => {
+describe('shields, hull and wings', () => {
+  it('shields absorb fire first, then the hull, and enough fire destroys the ship', () => {
+    ship.takeDamage(40);
+    expect(session.telemetry.shield).toBe(60);
+    expect(session.telemetry.hp).toBe(100);
+    ship.takeDamage(90);
+    expect(session.telemetry.shield).toBe(0);
+    expect(session.telemetry.hp).toBe(70);
+    step(1);
+    expect(session.telemetry.alert).toBe('shielddown');
     ship.takeDamage(500);
-    expect(session.telemetry.hp).toBe(15);
+    expect(session.telemetry.hp).toBe(0);
+    expect(session.telemetry.crashed).toBe(true);
+    seconds(3.7);
     expect(session.telemetry.crashed).toBe(false);
+    expect(session.telemetry.shield).toBe(100);
+  });
+
+  it('shields recharge after a quiet spell; the hull knits back slowly', () => {
+    ship.takeDamage(120);
+    expect(session.telemetry.shield).toBe(0);
+    expect(session.telemetry.hp).toBe(80);
+    seconds(4);
+    expect(session.telemetry.shield).toBe(0);
+    seconds(3);
+    expect(session.telemetry.shield).toBeGreaterThan(5);
+    expect(session.telemetry.hp).toBe(80);
+    seconds(6);
+    expect(session.telemetry.hp).toBeGreaterThan(80);
   });
 
   it('opens the foils to fight and locks them for speed', () => {

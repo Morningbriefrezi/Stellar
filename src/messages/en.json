@@ -1131,7 +1131,7 @@
       "speed": "Speed",
       "kills": "Kills",
       "hull": "Hull",
-      "hint": "W A S D · mouse · Space fire · Shift boost · Q E roll · 1 2 3 speed · H jump · F S-foils · V eject / board · C view · Esc exit",
+      "hint": "W S thrust · mouse steer · A D yaw · Q E roll · Space fire · Shift boost · 1 2 3 regime · H jump · T target · G align · N targets · Z assist · F wings · V eject · C view · Esc exit",
       "view": "View",
       "camera": "Camera",
       "camIn": "Camera closer",
@@ -1153,8 +1153,8 @@
       },
       "hangar": "Hangar",
       "ships": {
-        "xfoil": "X-foil",
-        "interceptor": "Interceptor"
+        "kestrel": "Kestrel",
+        "lance": "Lance"
       },
       "eject": "Eject",
       "board": "Board",
@@ -1178,17 +1178,25 @@
       "near": "Near",
       "alt": "Altitude",
       "system": "System",
-      "target": "Next star",
-      "foils": "S-foils",
+      "target": "Target",
+      "foils": "Wings",
       "foilsOpen": "Open",
       "foilsLocked": "Locked",
       "alerts": {
-        "proximity": "Pull up",
-        "entry": "Re-entry — hull heating",
+        "proximity": "Collision — pull up",
+        "entry": "Atmospheric entry",
         "masslock": "Mass lock — too close to jump",
         "charging": "Hyperdrive charging → {target}",
         "jump": "Light speed → {target}",
-        "arrived": "Arrived: {system}"
+        "arrived": "Arrived: {system}",
+        "solar": "Solar proximity — hull heating",
+        "gravity": "Gravity well — fast drive limited",
+        "jumpready": "Jump ready",
+        "hostile": "Hostile contact",
+        "contact": "Unknown contact — scanning",
+        "lowshield": "Low shield",
+        "shielddown": "Shields down",
+        "hullcritical": "Hull critical"
       },
       "hullLost": "Hull lost",
       "respawn": "Respawn in {n}",
@@ -1219,7 +1227,141 @@
         "titania": "Titania",
         "oberon": "Oberon",
         "triton": "Triton",
-        "charon": "Charon"
+        "charon": "Charon",
+        "voyager1": "Voyager 1",
+        "voyager2": "Voyager 2",
+        "pioneer10": "Pioneer 10",
+        "pioneer11": "Pioneer 11",
+        "newHorizons": "New Horizons"
+      },
+      "launchSub": "Launch sequence",
+      "shipRoles": {
+        "kestrel": "Survey ship",
+        "lance": "Interceptor"
+      },
+      "assistOn": "Assist on",
+      "assistOff": "Assist off",
+      "driveReady": "Drive ready",
+      "driveLocked": "Mass locked",
+      "driveCharging": "Drive engaged",
+      "targets": "Targets",
+      "targetNone": "No target",
+      "targetClear": "Clear target",
+      "align": "Align",
+      "heat": "Heat",
+      "log": "Log",
+      "contacts": "{n} contacts",
+      "noContacts": "No contacts",
+      "region": "Approaching {body}",
+      "discovery": "Discovery",
+      "navJump": "Jump · {system}",
+      "navContact": "Unknown contact",
+      "navKinds": {
+        "star": "Star",
+        "planet": "Planet",
+        "moon": "Moon",
+        "station": "Station",
+        "probe": "Probe",
+        "contact": "Contact",
+        "jump": "Jump"
+      },
+      "discoveries": {
+        "moonPass": {
+          "title": "Lunar low pass",
+          "fact": "The Moon drifts 3.8 cm farther from Earth every year."
+        },
+        "earthOrbit": {
+          "title": "Earth orbit",
+          "fact": "The ISS crosses this altitude sixteen times a day at 7.66 km/s."
+        },
+        "issFlyby": {
+          "title": "Station flyby",
+          "fact": "The ISS is the size of a football field and weighs 420 tonnes."
+        },
+        "marsVisit": {
+          "title": "Mars",
+          "fact": "Olympus Mons stands 21 km high, nearly three Everests."
+        },
+        "venusClouds": {
+          "title": "Venus cloud deck",
+          "fact": "Venus's clouds are sulphuric acid; the surface below is 465 °C."
+        },
+        "mercuryDawn": {
+          "title": "Mercury",
+          "fact": "A day on Mercury lasts 176 Earth days, twice its year."
+        },
+        "beltCrossing": {
+          "title": "Asteroid belt",
+          "fact": "The whole belt weighs less than 4% of the Moon."
+        },
+        "jupiterApproach": {
+          "title": "Jupiter",
+          "fact": "Jupiter has 2.5 times the mass of every other planet combined."
+        },
+        "greatRedSpot": {
+          "title": "Great Red Spot",
+          "fact": "A storm wider than Earth, blowing for at least 190 years."
+        },
+        "europaScan": {
+          "title": "Europa",
+          "fact": "Under Europa's ice lies an ocean with twice Earth's water."
+        },
+        "saturnRings": {
+          "title": "Saturn's rings",
+          "fact": "The rings are 280,000 km across and mostly under 100 m thick."
+        },
+        "titanHaze": {
+          "title": "Titan",
+          "fact": "Titan has rivers and seas of liquid methane under an orange haze."
+        },
+        "uranusTilt": {
+          "title": "Uranus",
+          "fact": "Uranus rolls on its side: its axis is tilted 98 degrees."
+        },
+        "neptuneWinds": {
+          "title": "Neptune",
+          "fact": "Neptune's winds reach 2,100 km/h, the fastest in the solar system."
+        },
+        "plutoHeart": {
+          "title": "Pluto",
+          "fact": "Pluto's heart, Sputnik Planitia, is a nitrogen-ice glacier."
+        },
+        "solarCorona": {
+          "title": "Solar corona",
+          "fact": "The corona is over a million degrees, hotter than the surface."
+        },
+        "probeFound": {
+          "title": "Deep-space probe",
+          "fact": "Voyager 1 is the most distant human-made object, past 160 AU."
+        },
+        "heliopause": {
+          "title": "Heliopause",
+          "fact": "Here the solar wind yields to interstellar space; Voyager 1 crossed it in 2012."
+        },
+        "anomaly": {
+          "title": "Anomalous signal",
+          "fact": "Something scanned the ship. Nothing in the catalogue matches."
+        },
+        "firstBlood": {
+          "title": "First contact, resolved",
+          "fact": "Unknown craft destroyed. Expect company."
+        },
+        "lightSpeed": {
+          "title": "Light speed",
+          "fact": "At c, Alpha Centauri is 4.37 years away. The drive cheats."
+        },
+        "alphaCentauri": {
+          "title": "Alpha Centauri",
+          "fact": "The nearest star system: three suns, 4.37 light years out."
+        },
+        "centauriPrime": {
+          "title": "Centauri Prime",
+          "fact": "An inhabited world. Its harbour control speaks first."
+        },
+        "proximaB": {
+          "title": "Proxima b",
+          "fact": "A rocky world in Proxima's habitable zone, found in 2016."
+        }
       }
     }
   },
@@ -1705,11 +1847,11 @@
   "homepage": {
     "homeTabLabel": "Home",
     "hero": {
-      "headline1": "Is tonight",
-      "headline2": "a telescope night?",
-      "subtitle": "Live sky conditions for your location — and Stars rewards for what you observe.",
-      "ctaPrimary": "Start tonight's mission",
-      "ctaSecondary": "Start Observing",
+      "headline1": "Someone’s sky",
+      "headline2": "is always clear.",
+      "subtitle": "Book time on a real telescope where the night is open — or check whether tonight is worth it where you are.",
+      "ctaPrimary": "Book a telescope",
+      "ctaSecondary": "Try the simulator",
       "cards": {
         "consoleTitle": "Sky tonight",
         "today": "Tonight",
@@ -1871,7 +2013,17 @@
       "point2": "You book a slot, drive the telescope, and keep what it captures.",
       "point3": "Solana settles the operator’s payout, where you never have to see it.",
       "status": "First node: Tbilisi, under commissioning. The simulator is open to everyone now.",
-      "cta": "See the observatory →"
+      "cta": "See the observatory →",
+      "tryTitle": "Drive one before you book one",
+      "tryLead": "A simulator of the same telescope — the real field of view, the real slew times, the real safety envelope. It refuses the same targets the instrument would, for the same reasons. No account needed.",
+      "tryCta": "Open the simulator →",
+      "ownerTitle": "Own a telescope that sits idle?",
+      "ownerLead": "There is no box to buy. The software connects the mount and camera you already own, and you keep 60% from the first session — 80% once the instrument has earned it.",
+      "ownerCta": "What an operator earns →",
+      "proofCta": "How a capture is proved →",
+      "capturesTitle": "What the network has photographed",
+      "capturesLead": "Every frame carries the instrument that took it and where it came from. Simulated frames are labelled as such — always.",
+      "capturesCta": "See every capture →"
     }
   },
   "observeFlow": {
@@ -1974,7 +2126,8 @@
         "verification_unavailable": "Couldn't analyze this photo — no Stars. Keep it anyway, or try again.",
         "ai_generated": "Looks AI-generated — no Stars. You can keep it anyway.",
         "screenshot_detected": "Looks like a screenshot — no Stars. You can keep it anyway.",
-        "too_cloudy": "Too cloudy to verify — no Stars. Keep it, or try again on a clearer night."
+        "too_cloudy": "Too cloudy to verify — no Stars. Keep it, or try again on a clearer night.",
+        "timestamp_invalid": "The capture time isn't plausible — no Stars. You can keep it anyway."
       }
     },
     "result": {
@@ -2584,6 +2737,195 @@
       "back": "Back",
       "missionsCardDesc": "30-second sky game — tap shooting stars",
       "missionsCardScored": "Today: {score} caught"
+    }
+  },
+  "observatory": {
+    "network": {
+      "title": "Observatory",
+      "lead": "Book time on a real telescope and watch a real object, live. When your sky is clouded over, someone else’s is not.",
+      "proofLink": "How a capture is proved",
+      "capturesLink": "What the network has photographed",
+      "requestsLink": "Ask for a photograph",
+      "firstLightLink": "First Light — the sky on a night that mattered",
+      "instrumentCount": "{count, plural, one {# instrument} other {# instruments}} on the network",
+      "observableNow": "{count} observable right now",
+      "empty": "No instruments are listed yet. The first node comes online with the beta.",
+      "tryTitle": "Try the instrument before you book it",
+      "tryLead": "A simulator of the same telescope, with the real field of view, the real slew times and the real safety envelope. It will refuse the same targets the instrument would, for the same reasons.",
+      "tryCta": "Open the simulator",
+      "ownerTitle": "Own a telescope that sits idle?",
+      "ownerLead": "Most instruments are used a handful of nights a year. Put yours on the network and it earns on the clear nights you are not out with it. You keep 60% from the first session and 80% once the instrument has earned it.",
+      "ownerCta": "What an operator earns"
+    },
+    "routing": {
+      "here": "{cloud}% cloud where you are.",
+      "under": "{name} in {site} is under {cloud}%.",
+      "openNow": "{name} in {site} is open right now.",
+      "nextSlot": "Its next free slot is {time} in your time, {minutes} minutes for {price} ₾.",
+      "full": "Its timetable is full tonight.",
+      "book": "Book {name}",
+      "askInstead": "Or ask for a photograph instead",
+      "sameSky": "{cloud}% cloud where you are — and the only instrument on the network is under the same weather. More telescopes in more places is the whole fix.",
+      "registered": "{count, plural, one {# owner has} other {# owners have}} registered one, not yet online.",
+      "putOnNetwork": "Put a telescope on the network"
+    },
+    "requests": {
+      "title": "Ask for a photograph",
+      "lead": "You do not have to be awake. Name an object and how long you are willing to wait, and the instrument works your request on the first night the sky allows it.",
+      "object": "object",
+      "wait": "willing to wait",
+      "nights3": "3 nights",
+      "week": "a week",
+      "fortnight": "a fortnight",
+      "priceNote": "{cls} · {price} ₾ · nothing is charged while the network is a dry run, and a window that closes without a photograph costs nothing at all.",
+      "join": "Join the queue",
+      "signIn": "Sign in to request",
+      "placing": "Placing…",
+      "failed": "That did not go through.",
+      "network": "Network error — try again.",
+      "yours": "Your requests",
+      "withdraw": "withdraw",
+      "waiting": "waiting for a clear night before {date}",
+      "scheduled": "scheduled for {date}",
+      "scheduledPlain": "scheduled",
+      "delivered": "delivered",
+      "expired": "the window closed without a clear night — nothing charged",
+      "cancelled": "withdrawn",
+      "footer": "A request is worked between booked sessions, so it never takes a slot from someone driving the telescope themselves.",
+      "classBright": "Bright",
+      "classDeepShort": "Deep sky",
+      "classDeepLong": "Deep sky, long"
+    },
+    "readiness": {
+      "sunAbove": "Sun is {deg}° above the horizon at {site}.",
+      "twilight": "Twilight at {site} — the sky is not dark enough yet.",
+      "cloud": "{pct}% cloud over {site}.",
+      "cloudy": "Cloud over {site}.",
+      "commissioning": "Built and under commissioning — not yet taking bookings.",
+      "noAgent": "No agent connection at {site}.",
+      "heartbeatLate": "Heartbeat is late at {site}.",
+      "weatherHold": "The operator has held {site} for weather.",
+      "operatorNote": "{note}",
+      "missionRunning": "A mission is running.",
+      "simulatorMode": "Connected, and running its own simulator — frames are not evidence.",
+      "nextWindow": "Next dark window at {time} site time."
+    },
+    "node": {
+      "tierFirstParty": "Stellar-operated",
+      "tierKitted": "Partner · Node Kit",
+      "tierByo": "Partner · own rig",
+      "optics": "Optics",
+      "aperture": "Aperture",
+      "focalLength": "Focal length",
+      "camera": "Camera",
+      "bestFor": "Best for {targets}",
+      "price": "{price} ₾ per {minutes} min",
+      "open": "Instrument and availability"
+    },
+    "state": {
+      "online": "Observable now",
+      "busy": "Session in progress",
+      "weather": "Clouded out",
+      "daylight": "Daylight",
+      "offline": "Offline"
+    },
+    "firstLight": {
+      "title": "First Light",
+      "lead": "The sky on somebody’s night, and a photograph of one thing in it. Two true things on one sheet, each carrying its own date.",
+      "for": "for",
+      "occasion": "occasion",
+      "night": "the night",
+      "hour": "the hour (UTC)",
+      "place": "place",
+      "object": "object",
+      "skyTitle": "the sky that night",
+      "moon": "Moon",
+      "moonValue": "{phase} · {pct}% lit",
+      "alsoUp": "Also up",
+      "aboveHorizon": "{deg}° above the horizon, {compass}",
+      "belowHorizon": "below the horizon that hour — try another time of night",
+      "noPlanets": "no planets above the horizon",
+      "notComputed": "position not computed",
+      "better": "{name} was highest that night at {time} UTC, {deg}° up — use that hour",
+      "computed": "Computed sky positions for your selected moment and place. Weather and local obstructions are not reconstructed; being above the horizon does not guarantee visibility.",
+      "photoTitle": "the photograph",
+      "commission": "Photograph it for this poster, on the first clear night after the order.",
+      "commissionNote": "The certificate names that night and the instrument. +{price} ₾",
+      "archiveNote": "Without a commission, this is a computed sky sheet only. No archive photograph is attached. A commissioned photograph carries its own capture date when an instrument delivers it.",
+      "whatYouGet": "what you get",
+      "tierDigital": "Digital file",
+      "tierDigitalNote": "Delivered as a file, to print or keep.",
+      "tierPrint": "A3 print",
+      "tierPrintNote": "Printed in Tbilisi and posted.",
+      "tierFramed": "A3 framed",
+      "tierFramedNote": "Framed in Tbilisi, collected or couriered.",
+      "order": "Order",
+      "signIn": "Sign in to order",
+      "ordering": "Ordering…",
+      "done": "Request recorded. No payment has been taken. Photograph delivery is not yet available while the observatory is commissioning.",
+      "dryRun": "Nothing is charged while the network is a dry run.",
+      "sheet": "the sheet",
+      "failed": "That did not go through.",
+      "network": "Network error — try again.",
+      "footer": "A commissioned photograph joins the same queue anyone else’s request does, and is worked between booked sessions.",
+      "skyConditions": "Night-sky window",
+      "darkSky": "Sun at least 6° below the horizon; weather unknown",
+      "daylightSky": "Daylight or bright twilight — above the horizon does not mean visible",
+      "noNightWindow": "No suitable night-time window was found for this object on this UTC date. Try another object or date; you can still keep this computed sky record.",
+      "invalidDate": "Choose a valid date between 1900 and 2100 and an hour in UTC.",
+      "previewLoading": "Preparing your sky sheet…",
+      "previewAlt": "First Light preview showing computed sky positions and an empty photograph frame",
+      "previewFailed": "The preview could not load. Wait a moment, then try again.",
+      "previewRetry": "Try preview again",
+      "downloadPreview": "Download preview PNG",
+      "previewNote": "Preview only, 1000 × 1414 pixels. Includes computed positions; no telescope photograph or observation certificate."
+    },
+    "operator": {
+      "title": "Put your telescope to work",
+      "lead": "Most instruments are used a handful of nights a year. On the clear nights you are not out with yours, someone else can be — and you are paid for it.",
+      "keepTitle": "What you keep",
+      "keepLead": "Your share rises with hours actually delivered — not nights listed, not a subscription. An instrument that has run 150 hours of other people’s sessions has been aligned, cleaned and unparked 150 hours’ worth, and that is the only number worth paying for.",
+      "colTier": "Tier",
+      "colHours": "Delivered hours",
+      "colKeep": "You keep",
+      "colPerSession": "Per 40 ₾ session",
+      "keepNote": "At three sessions a night on a hundred clear nights, a season pays for the effort. A session that clouds out refunds the customer in full and costs you nothing.",
+      "needsTitle": "What a node needs",
+      "needs1": "A computerised GoTo mount, and somewhere it can stay set up.",
+      "needs2": "A camera and a mini-PC to run the agent on.",
+      "needs3": "A network connection, and a horizon you would observe from yourself.",
+      "needsNote": "There is no box to buy. If you already run ASCOM, Alpaca or INDI, the software installs on what you have.",
+      "earnedMonth": "earned this month",
+      "lifetime": "{amount} ₾ in total",
+      "hoursDelivered": "{hours} hours delivered",
+      "toNext": "{hours} hours to {tier}, which keeps {pct}%.",
+      "dryRunNote": "Nothing has settled yet. {name} runs on the simulator until the instrument is wired, and simulated sessions pay nothing and count for nothing — the figures above start moving the night it goes live.",
+      "formTitle": "Register your telescope",
+      "formLead": "No commitment, and nothing to install yet. Listing opens as the first partner nodes come online, oldest registrations first.",
+      "email": "Email",
+      "city": "City",
+      "telescope": "Telescope",
+      "mount": "Mount",
+      "camera": "Camera",
+      "note": "Anything else",
+      "mountHint": "GoTo, EQ, none",
+      "register": "Register",
+      "sending": "Sending…",
+      "doneTitle": "Your telescope is on the list",
+      "doneLead": "We will write when the first partner nodes are commissioned, and we will tell you plainly what your rig needs.",
+      "formFailed": "That did not send. Try again.",
+      "network": "Network error — try again.",
+      "simFooter": "Want to see what a session looks like from the customer’s side first?",
+      "simLink": "The simulator is open.",
+      "proofFooter": "What the network does with a frame your instrument takes is written out in",
+      "proofLink": "how a capture is proved"
+    },
+    "tiers": {
+      "night_assistant": "Night Assistant",
+      "telescope_operator": "Telescope Operator",
+      "support_astronomer": "Support Astronomer",
+      "staff_astronomer": "Staff Astronomer",
+      "observatory_director": "Observatory Director"
     }
   }
 }

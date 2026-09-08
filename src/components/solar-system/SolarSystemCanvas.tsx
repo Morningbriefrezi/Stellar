@@ -67,7 +67,7 @@ import {
 import { makeAlphaCentauri } from '@/lib/solar-system/star-systems';
 import { makeSmallBodies } from '@/lib/solar-system/small-bodies';
 import { makeCockpit, type CockpitHandle } from '@/lib/solar-system/cockpit';
-import { makeAlienEncounters } from '@/lib/solar-system/aliens';
+import { makeAlienEncounters, type AlienHandle } from '@/lib/solar-system/aliens';
 import { makeDeepSpaceProbes } from '@/lib/solar-system/probes';
 import {
   makeNearbyStars,
@@ -77,6 +77,13 @@ import {
   makeCosmicWeb,
   tierBlendFromRadius,
 } from '@/lib/solar-system/galactic-scene';
+
+declare global {
+  interface Window {
+    /** Development only: lets a headless capture teleport the ship and read the session. */
+    __stellarFlight?: { session: FlightSession; ship: PlayerShipHandle; world: FlightWorld; aliens: AlienHandle };
+  }
+}
 
 export interface CosmicView {
   /** 0..1 — how zoomed into the solar system the camera is (1 = close). */
@@ -1008,6 +1015,7 @@ export function SolarSystemCanvas({
       scene.remove(ship.fxGroup);
       ship.dispose();
       ship = null;
+      delete window.__stellarFlight;
       cockpit?.dispose();
       cockpit = null;
       alphaCen.group.visible = false;
@@ -1016,6 +1024,7 @@ export function SolarSystemCanvas({
       camera.up.set(0, 1, 0);
       camera.fov = 42;
       camera.updateProjectionMatrix();
+      renderer.toneMappingExposure = 1.18;
     };
 
     // The flight model's view of the world: every solid body with its real
@@ -1036,6 +1045,7 @@ export function SolarSystemCanvas({
     let stationDownUntil = 0;
     const world: FlightWorld = {
       bodies: [],
+      pois: [],
       home: { position: new THREE.Vector3(), lookAt: new THREE.Vector3(), yaw: 0 },
       jump: { name: 'alphaCentauri', distanceLy: 4.37, position: new THREE.Vector3(), lookAt: new THREE.Vector3(), yaw: 0 },
       systemName: 'sol',
@@ -1095,6 +1105,7 @@ export function SolarSystemCanvas({
         world.bodies.push(iss);
       }
       for (const b of alphaCen.bodies) world.bodies.push(b);
+      world.pois = probes.targets;
       const atSol = !shipPos || shipPos.length() < shipPos.distanceTo(alphaCen.center);
       world.systemName = atSol ? 'sol' : 'alphaCentauri';
       if (atSol) {
@@ -1124,6 +1135,8 @@ export function SolarSystemCanvas({
         if (n >= MARKER_MAX || b.destroyed) continue;
         const dist = cam.position.distanceTo(b.position);
         if (dist > b.radius * 260) continue;
+        // The locked target carries its own marker.
+        if (b.id === tel.navId) continue;
         // How much of the frame height the body covers. Anything filling
         // more than a small part of it needs no name — you are looking at it.
         const halfFov = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
@@ -1133,8 +1146,15 @@ export function SolarSystemCanvas({
         // The name runs to the right of the bracket, so the right margin has
         // to be wide enough to hold it rather than clip it at the edge.
         if (!p || p.x < 40 || p.x > width - 150 || p.y < 40 || p.y > height - 120) continue;
-        tel.markers[n * 2] = p.x;
-        tel.markers[n * 2 + 1] = p.y;
+        // Two names on the same spot read as neither; keep the first.
+        let crowded = false;
+        for (let k = 0; k < n && !crowded; k++) {
+          crowded = Math.abs(tel.markers[k * 3] - p.x) < 150 && Math.abs(tel.markers[k * 3 + 1] - p.y) < 26;
+        }
+        if (crowded) continue;
+        tel.markers[n * 3] = p.x;
+        tel.markers[n * 3 + 1] = p.y;
+        tel.markers[n * 3 + 2] = screenFrac / 0.13;
         tel.markerIds.push(b.id);
         n += 1;
       }
@@ -1199,12 +1219,13 @@ export function SolarSystemCanvas({
           scene.add(ship.boltGroup);
           scene.add(ship.fxGroup);
           alphaCen.group.visible = true;
-          cockpit = makeCockpit(session.shipKind === 'interceptor' ? 0x3aa8ff : 0x5eead4);
+          cockpit = makeCockpit(session.shipKind === 'lance' ? 0x7fd8ff : 0xffb347);
           cockpit.setAspect(mount.clientWidth / mount.clientHeight);
           syncWorld(null, earthPos, now);
           ship.spawn(world.home);
           const live = ship;
           aliens.setHostile({ group: live.group, onHit: (dmg) => live.takeDamage(dmg) });
+          if (process.env.NODE_ENV !== 'production') window.__stellarFlight = { session, ship: live, world, aliens };
         }
       } else if (ship) {
         teardownShip();
@@ -1216,6 +1237,10 @@ export function SolarSystemCanvas({
         ship.update(dtSec, (now - t0) / 1000, camera, aliens, world);
         alphaCen.update(dtSec, camera.position, camera);
         markTargets(session!.telemetry, world, camera);
+        // Exposure adapts against the Sun: the closer and the more the nose
+        // is on it, the further the iris closes, so the disc keeps a
+        // surface and the rest of the frame goes dark and dangerous.
+        renderer.toneMappingExposure = 1.18 - 0.62 * session!.telemetry.sunGlare;
       } else if (focus && meshById.has(focus)) {
         vTarget.copy(meshById.get(focus)!.position);
         const pr = worldRadiusForBody(focus);
@@ -1310,7 +1335,7 @@ export function SolarSystemCanvas({
       // Orbit paths orient you from far out. Close in — orbiting a body, or
       // flying — they just draw lines across the thing you came to look at,
       // so they fade away as the camera closes on the subject.
-      setOrbitRingsFade(orbitRings, ship ? 0.35 : focus ? 0 : THREE.MathUtils.clamp((sysRadius - 9) / 9, 0, 1));
+      setOrbitRingsFade(orbitRings, ship ? 0.14 : focus ? 0 : THREE.MathUtils.clamp((sysRadius - 9) / 9, 0, 1));
 
       // Stream the view + projected anchor positions to the parent so it
       // can place the Sun pin / Milky Way tap label as HTML overlays.
