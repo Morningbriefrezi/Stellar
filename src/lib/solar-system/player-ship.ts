@@ -10,14 +10,13 @@
 // is about a third of an Earth radius long, so every planet towers over it.
 //
 // Geometry lives in ship-mesh.ts, the chase camera in flight-camera.ts,
-// desktop input in flight-input.ts, sound in flight-audio.ts, the
-// expedition log in flight-missions.ts and target maths in
+// desktop input in flight-input.ts, the two surviving sounds in
+// flight-audio.ts, the expedition log in flight-missions.ts and target maths in
 // flight-targeting.ts. This file is the flight model and the glue.
 
 import * as THREE from 'three';
 import type { AlienHandle } from '@/lib/solar-system/aliens';
 import { softSpriteTexture } from '@/lib/solar-system/soft-sprite';
-import { makeRadio } from '@/lib/solar-system/radio';
 import { makeFlightAudio } from '@/lib/solar-system/flight-audio';
 import { makeCameraRig, type CameraFrame } from '@/lib/solar-system/flight-camera';
 import { buildCosmonaut, buildKestrel, buildXfoil, type ShipKind, type ShipParts } from '@/lib/solar-system/ship-mesh';
@@ -58,7 +57,9 @@ export type FlightAlert =
   | 'contact'
   | 'lowshield'
   | 'shielddown'
-  | 'hullcritical';
+  | 'hullcritical'
+  | 'docked'
+  | 'undocked';
 
 interface Regime {
   max: number;
@@ -90,6 +91,25 @@ const EVA_HULL_RADIUS = 0.6 * E;
 /** How close the suit must be to climb back aboard. */
 const BOARD_RANGE = 14 * H;
 const STATION_HP = 6;
+/** Docking: a station takes a ship arriving this slowly as a visitor rather
+ *  than as a wreck, and berths it this far off the hull. */
+const DOCK_SPEED = 0.12 * U;
+const DOCK_GAP = 5 * H;
+/** The berth clamps on for this long before thrust can cast off again —
+ *  without it the throttle that flew the ship in would release it at once. */
+const DOCK_HOLD = 1.6;
+/** Berthed, the station tops the ship back up at this rate per second. */
+const DOCK_REPAIR = 24;
+/** A world that hails also resupplies: hull, shields and the banks, slowly. */
+const SUPPLY_RATE = 8;
+/** Standing order: cannon hits a world takes before it comes apart, and how
+ *  long the completion banner holds before the next order comes in. */
+const ORDER_HITS = 30;
+const ORDER_DONE_HOLD = 9;
+/** Worlds the order never picks: home, and the one world that talks to us. */
+const ORDER_SPARED = new Set(['earth', 'centauriPrime']);
+/** Anything further than this is in the other star system. */
+const SYSTEM_REACH = 20;
 /** Pilot's eye inside the hull, and the lens it looks through. */
 const COCKPIT_EYE = new THREE.Vector3(0, 0.5 * H, 1.5 * H);
 const COCKPIT_FOV = 70;
@@ -223,6 +243,11 @@ export interface FlightInput {
   targetRequest: string | null;
   /** Chase-camera distance multiplier — 1 = the regime's own distance. */
   camZoom: number;
+  /** Right button held: the chase camera walks around the hull. */
+  orbiting: boolean;
+  /** Where the free look has walked to (rad); both zero = back on the tail. */
+  orbitYaw: number;
+  orbitPitch: number;
 }
 
 export interface FlightTelemetry {
@@ -316,6 +341,16 @@ export interface FlightTelemetry {
   commsFrom: string;
   commsLine: number;
   commsProgress: number;
+  /** Berthed at a station, and the id of the station holding the ship. */
+  docked: boolean;
+  dockedTo: string;
+  /** Taking on fuel and stores from a friendly world. */
+  supply: boolean;
+  /** Standing order: the world to destroy, how much of it is left (1..0),
+   *  and a short hold after it is done. */
+  orderId: string;
+  orderIntegrity: number;
+  orderDone: boolean;
 }
 
 export interface FlightSession {
@@ -342,7 +377,7 @@ export interface FlightBody {
   /** Stations can be shot down or rammed; the scene hides them while set. */
   destroyed?: boolean;
   hp?: number;
-  /** An inhabited world: it opens a radio channel when the ship comes near. */
+  /** An inhabited world: it opens a channel and resupplies ships that come near. */
   hails?: boolean;
 }
 
@@ -374,7 +409,7 @@ export function createFlightSession(): FlightSession {
       boost: false, fire: false, align: false, mouseDX: 0, mouseDY: 0,
       modeRequest: null, foilsToggle: false, eject: false, viewToggle: false, assistToggle: false,
       targetStep: 0, targetClear: false, targetRequest: null,
-      camZoom: 1,
+      camZoom: 1, orbiting: false, orbitYaw: 0, orbitPitch: 0,
     },
     telemetry: {
       speed: 0,
@@ -438,6 +473,12 @@ export function createFlightSession(): FlightSession {
       commsFrom: '',
       commsLine: 0,
       commsProgress: 0,
+      docked: false,
+      dockedTo: '',
+      supply: false,
+      orderId: '',
+      orderIntegrity: 1,
+      orderDone: false,
     },
   };
 }
@@ -453,8 +494,9 @@ interface Debris {
 
 interface CrashFx {
   group: THREE.Group;
-  /** `body` null = destroyed in open space: no gravity, debris drifts. */
-  trigger: (point: THREE.Vector3, normal: THREE.Vector3, body: FlightBody | null, impactVel: THREE.Vector3) => void;
+  /** `body` null = destroyed in open space: no gravity, debris drifts.
+   *  `scale` multiplies the whole burst — 1 is a ship, hundreds is a world. */
+  trigger: (point: THREE.Vector3, normal: THREE.Vector3, body: FlightBody | null, impactVel: THREE.Vector3, scale?: number) => void;
   update: (dt: number) => void;
   dispose: () => void;
 }
@@ -555,6 +597,7 @@ function makeCrashFx(): CrashFx {
   }
 
   let life = -1;
+  let fxScale = 1;
   let body: FlightBody | null = null;
   const normal = new THREE.Vector3();
   const point = new THREE.Vector3();
@@ -572,8 +615,10 @@ function makeCrashFx(): CrashFx {
 
   return {
     group,
-    trigger(at, n, hitBody, impactVel) {
+    trigger(at, n, hitBody, impactVel, scale = 1) {
       life = 0;
+      fxScale = scale;
+      sparkMat.size = 0.5 * H * scale;
       body = hitBody;
       point.copy(at);
       normal.copy(n);
@@ -584,9 +629,9 @@ function makeCrashFx(): CrashFx {
       group.position.copy(point);
       group.visible = true;
       core.s.position.set(0, 0, 0);
-      fire.s.position.copy(normal).multiplyScalar(0.8 * H);
-      smoke.s.position.copy(normal).multiplyScalar(2.2 * H);
-      ring.position.copy(normal).multiplyScalar(0.05 * H);
+      fire.s.position.copy(normal).multiplyScalar(0.8 * H * scale);
+      smoke.s.position.copy(normal).multiplyScalar(2.2 * H * scale);
+      ring.position.copy(normal).multiplyScalar(0.05 * H * scale);
       ring.quaternion.setFromUnitVectors(tmp.set(0, 0, 1), normal);
       ring.visible = !!body;
       const kick = Math.min(1.6, 0.6 + impactVel.length() / (4 * U));
@@ -596,16 +641,17 @@ function makeCrashFx(): CrashFx {
         sparkPos[i * 3 + 1] = 0;
         sparkPos[i * 3 + 2] = 0;
         randomInHemisphere(sparkVel[i], spread);
-        sparkVel[i].multiplyScalar((1 + Math.random() * 5) * U * kick);
+        sparkVel[i].multiplyScalar((1 + Math.random() * 5) * U * kick * scale);
       }
       sparkGeom.getAttribute('position').needsUpdate = true;
       for (const d of debris) {
         d.mesh.visible = true;
+        d.mesh.scale.setScalar(scale);
         d.settled = false;
-        d.mesh.position.set(0, 0, 0).addScaledVector(normal, 0.3 * H);
+        d.mesh.position.set(0, 0, 0).addScaledVector(normal, 0.3 * H * scale);
         d.mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
         randomInHemisphere(d.vel, body ? 1.1 : 4);
-        d.vel.multiplyScalar((0.8 + Math.random() * 3.2) * U * kick * (body ? 1 : 0.4));
+        d.vel.multiplyScalar((0.8 + Math.random() * 3.2) * U * kick * scale * (body ? 1 : 0.4));
         d.spin.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(14);
       }
       debrisSkin.opacity = 1;
@@ -614,25 +660,28 @@ function makeCrashFx(): CrashFx {
     update(dt) {
       if (life < 0) return;
       life += dt;
-      if (life > LIFE) {
+      // A world takes longer to come apart than a hull does.
+      const tk = Math.min(2.5, Math.sqrt(fxScale));
+      if (life > LIFE * tk) {
         life = -1;
         group.visible = false;
         for (const d of debris) d.mesh.visible = false;
         return;
       }
-      const t = life;
+      const t = life / tk;
+      const hs = H * fxScale;
       const coreK = Math.min(1, t / 0.45);
-      core.s.scale.setScalar((1.5 + 6 * coreK) * H);
+      core.s.scale.setScalar((1.5 + 6 * coreK) * hs);
       core.mat.opacity = Math.max(0, 1 - t / 0.5);
       const fireK = Math.min(1, t / 1.4);
-      fire.s.scale.setScalar((2 + 14 * Math.sqrt(fireK)) * H);
+      fire.s.scale.setScalar((2 + 14 * Math.sqrt(fireK)) * hs);
       fire.mat.opacity = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 1.3) * 0.95;
       fire.mat.color.setRGB(1.6, 0.45 + 0.5 * (1 - fireK), 0.15);
       const smokeK = Math.min(1, t / 2.8);
-      smoke.s.scale.setScalar((3 + 20 * Math.sqrt(smokeK)) * H);
+      smoke.s.scale.setScalar((3 + 20 * Math.sqrt(smokeK)) * hs);
       smoke.mat.opacity = t < 0.3 ? (t / 0.3) * 0.85 : Math.max(0, 1 - (t - 0.3) / 3.0) * 0.85;
       const ringK = Math.min(1, t / 1.0);
-      ring.scale.setScalar((1 + 22 * Math.sqrt(ringK)) * H);
+      ring.scale.setScalar((1 + 22 * Math.sqrt(ringK)) * hs);
       ringMat.opacity = Math.max(0, 1 - ringK) * 0.9;
 
       const g = body ? Math.min(MAX_SURFACE_G, body.surfaceG) / 9.81 * ONE_G : 0;
@@ -657,8 +706,8 @@ function makeCrashFx(): CrashFx {
         d.mesh.rotation.z += d.spin.z * dt;
         if (body) {
           tmp.copy(d.mesh.position).add(point).sub(body.position);
-          if (tmp.length() < floor + 0.08 * H) {
-            tmp.normalize().multiplyScalar(floor + 0.08 * H).add(body.position).sub(point);
+          if (tmp.length() < floor + 0.08 * hs) {
+            tmp.normalize().multiplyScalar(floor + 0.08 * hs).add(body.position).sub(point);
             d.mesh.position.copy(tmp);
             d.settled = true;
           }
@@ -728,7 +777,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
   const tel = session.telemetry;
   const input = session.input;
   const audio = makeFlightAudio();
-  const radio = makeRadio();
   const crash = makeCrashFx();
   const rig = makeCameraRig();
   const missions = makeMissionTracker();
@@ -889,8 +937,13 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
   let lastContact: 'none' | 'scan' | 'hostile' = 'none';
   let lockedFor = 0;
   let lowShieldWarned = false;
-  let rcsLevel = 0;
   let vibe = 0;
+  let dockedTo: FlightBody | null = null;
+  let dockHold = 0;
+  const dockOffset = new THREE.Vector3();
+  let orderId = '';
+  let orderHits = ORDER_HITS;
+  let orderDoneHold = 0;
 
   /** Whatever the player is flying right now — the ship, or the suit. */
   const actor = () => (pilot === 'ship' ? group : evaG);
@@ -956,6 +1009,8 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     boostCharge = 1;
     sinceBoost = 99;
     crashT = -1;
+    dockedTo = null;
+    dockHold = 0;
     mode = 'cruise';
     regime = regimes.cruise;
     eff.max = regime.max;
@@ -972,6 +1027,57 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     tel.crashed = false;
     tel.respawnIn = 0;
     tel.pilot = 'ship';
+  };
+
+  /** Come alongside: the berth holds the ship a few hull-lengths off the
+   *  structure with the nose already pointing out, so W departs. */
+  const dock = (b: FlightBody, outward: THREE.Vector3) => {
+    dockedTo = b;
+    dockHold = DOCK_HOLD;
+    dockOffset.copy(outward).multiplyScalar(b.radius + HULL_RADIUS + DOCK_GAP);
+    group.position.copy(b.position).add(dockOffset);
+    group.lookAt(tmp.copy(group.position).add(outward));
+    vel.set(0, 0, 0);
+    angVel.set(0, 0, 0);
+    pendYaw = pendPitch = 0;
+    mode = 'cruise';
+    regime = regimes.cruise;
+    setAlert('docked', 4);
+    rig.snap();
+  };
+
+  const undock = () => {
+    if (!dockedTo) return;
+    vel.copy(dockOffset).normalize().multiplyScalar(0.25 * regimes.cruise.max);
+    dockedTo = null;
+    setAlert('undocked', 2);
+  };
+
+  /** Standing order: one world in the system the ship is actually in. */
+  const pickOrder = (w: FlightWorld, from: THREE.Vector3) => {
+    const pool = w.bodies.filter((b) => b.kind === 'planet' && !b.destroyed
+      && !ORDER_SPARED.has(b.id) && from.distanceTo(b.position) < SYSTEM_REACH);
+    if (pool.length === 0) {
+      // Nothing in reach worth naming — look again in a few seconds rather
+      // than rebuilding the pool every frame.
+      orderDoneHold = 5;
+      return;
+    }
+    orderId = pool[Math.floor(Math.random() * pool.length)].id;
+    orderHits = ORDER_HITS;
+  };
+
+  const destroyWorld = (b: FlightBody, from: THREE.Vector3) => {
+    tmp2.copy(from).sub(b.position);
+    if (tmp2.lengthSq() < 1e-12) tmp2.set(0, 1, 0);
+    tmp2.normalize();
+    crash.trigger(b.position, tmp2, null, vel, b.radius / (8 * H));
+    b.destroyed = true;
+    audio.boom();
+    rig.kick(1.2);
+    tel.jumpFlash = 0.9;
+    orderId = '';
+    orderDoneHold = ORDER_DONE_HOLD;
   };
 
   const destroyStation = (b: FlightBody, from: THREE.Vector3) => {
@@ -1019,16 +1125,12 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     if (!fromHeat) {
       tel.hitFlash = 1;
       rig.kick(rest > 0 ? 0.5 : 0.25);
-      if (rest > 0) audio.hullHit();
-      else audio.shieldHit();
     }
     if (hadShield && shield <= 0) {
       setAlert('shielddown', 2.2);
-      audio.shieldDown();
     } else if (shield > 0 && shield < MAX_SHIELD * 0.25 && !lowShieldWarned) {
       lowShieldWarned = true;
       setAlert('lowshield', 1.6);
-      audio.warn('caution');
     }
     if (shield > MAX_SHIELD * 0.25) lowShieldWarned = false;
     if (hull <= 0) {
@@ -1036,7 +1138,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       doCrash(tmp.copy(actor().position), up, null);
     } else if (hull < MAX_HULL * 0.25 && rest > 0) {
       setAlert('hullcritical', 2);
-      audio.warn('danger');
     }
   };
 
@@ -1055,6 +1156,8 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     lookAhead: 6 * U,
     fov: REGIMES.cruise.fov,
     cockpitEye: COCKPIT_EYE,
+    orbitYaw: 0,
+    orbitPitch: 0,
     heat: 0,
     crashLook,
   };
@@ -1072,6 +1175,8 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     camFrame.camUp = pilot === 'ship' ? CAM_UP : EVA_CAM_UP;
     camFrame.lookAhead = pilot === 'ship' ? 6 * U : 2 * E;
     camFrame.fov = fovTarget;
+    camFrame.orbitYaw = input.orbiting ? input.orbitYaw : 0;
+    camFrame.orbitPitch = input.orbiting ? input.orbitPitch : 0;
     camFrame.heat = heat;
     rig.update(dt, camFrame, camera);
   };
@@ -1163,8 +1268,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     tel.navId = '';
     updateCamera(dt, camera, REGIMES.cruise.fov);
     updateDust(dt, 0);
-    audio.setEngine(0, false, 0);
-    audio.setRcs(0);
     for (const j of shipParts.rcs) j.mat.opacity = 0;
   };
 
@@ -1177,11 +1280,7 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       damage(amount, false);
     },
     update(dt, timeSec, camera, aliens, world) {
-      if (session.paused) {
-        audio.setEngine(0, false, 0);
-        audio.setRcs(0);
-        return;
-      }
+      if (session.paused) return;
       tel.hitFlash = Math.max(0, tel.hitFlash - dt * 2.5);
       tel.jumpFlash = Math.max(0, tel.jumpFlash - dt * 1.6);
       alertHold -= dt;
@@ -1255,7 +1354,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       if (input.assistToggle) {
         input.assistToggle = false;
         assist = !assist;
-        audio.warn('lock');
       }
       const me = actor();
       tel.pilot = pilot;
@@ -1283,7 +1381,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       tel.driveReady = !locked && pilot === 'ship' && jumpPhase === 'none';
       if (wasLocked && !locked && mode === 'fast' && pilot === 'ship') {
         setAlert('jumpready', 2.2);
-        audio.warn('lock');
       }
 
       const req = input.modeRequest;
@@ -1292,7 +1389,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         if (req === 'jump') {
           if (locked) {
             setAlert('masslock', 1.8);
-            audio.warn('caution');
           } else {
             mode = 'jump';
             jumpPhase = 'charge';
@@ -1303,7 +1399,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
             jumpTarget.yaw = world.jump.yaw;
             jumpName = world.jump.name;
             jumpOrigin = world.systemName;
-            audio.charge(JUMP_CHARGE);
           }
         } else {
           mode = req;
@@ -1471,6 +1566,29 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         me.position.addScaledVector(vel, dt);
         tel.boost = boost;
 
+        // ── Berthed: the station carries the ship, its crews put the hull
+        // and the banks back together, and any thrust casts off. ──
+        if (dockedTo) {
+          if (dockedTo.destroyed || pilot !== 'ship') {
+            dockedTo = null;
+          } else if (dockHold <= 0 && input.thrust > 0) {
+            undock();
+          } else {
+            dockHold -= dt;
+            me.position.copy(dockedTo.position).add(dockOffset);
+            prevPos.copy(me.position);
+            vel.set(0, 0, 0);
+            speed = 0;
+            shield = Math.min(MAX_SHIELD, shield + DOCK_REPAIR * dt);
+            hull = Math.min(MAX_HULL, hull + DOCK_REPAIR * dt);
+            energy = 1;
+            boostCharge = 1;
+            tel.shield = shield;
+            tel.hp = hull;
+            if (alertHold <= 0) setAlert('docked', 1);
+          }
+        }
+
         // ── Solid bodies: swept sphere test, so a tenth of c cannot tunnel
         // through a planet between two frames. ──
         seg.copy(me.position).sub(prevPos);
@@ -1485,6 +1603,10 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
           if (d < b.radius + hr) {
             tmp2.divideScalar(Math.max(d, 1e-9));
             tmp.copy(b.position).addScaledVector(tmp2, b.radius);
+            if (b.kind === 'station' && speed <= DOCK_SPEED && pilot === 'ship') {
+              dock(b, tmp2);
+              break;
+            }
             if (b.kind === 'station') destroyStation(b, prevPos);
             doCrash(tmp, tmp2, b);
             break;
@@ -1579,7 +1701,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       if (jumpPhase === 'charge') alert = 'charging';
       else if (jumpPhase === 'travel') alert = 'jump';
       else if (alertHold > 0) alert = heldAlert;
-      if (alert === 'proximity' || alert === 'entry') audio.warn('danger');
 
       // ── Wings: spread for a fight (firing, or contacts on the radar),
       // swept flat for speed. F overrides until the next regime change. ──
@@ -1617,14 +1738,11 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         const flicker = 1 + 0.06 * Math.sin(timeSec * 43) * (thrusting ? 1 : 0.3);
         for (const pl of live.plumes) pl.scale.set(1, Math.max(0.12, stretch * flicker), 1);
       }
-      let rcsSum = 0;
       for (const j of shipParts.rcs) {
         const k = Math.max(0, j.yaw * rcsYaw + j.pitch * rcsPitch + j.roll * rcsRoll + j.brake * rcsBrake);
         const target = Math.min(1, k) * (pilot === 'ship' && jumpPhase === 'none' ? 0.9 : 0);
         j.mat.opacity += (target - j.mat.opacity) * (1 - Math.exp(-dt * (target > j.mat.opacity ? 30 : 12)));
-        rcsSum += j.mat.opacity;
       }
-      rcsLevel += (Math.min(1, rcsSum / 3) - rcsLevel) * (1 - Math.exp(-dt * 10));
       vibe = tel.boost ? 1 : thrusting ? 0.35 : 0;
       const shiver = vibe * 0.05 * H;
       shipParts.hull.position.set(
@@ -1640,8 +1758,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       for (const m of shipParts.navMats) m.color.setHex(m.userData.base as number).multiplyScalar(beacon);
       group.visible = crashT < 0 && !(view === 'cockpit' && pilot === 'ship');
       const speedFrac = eff.max > 0 ? speed / eff.max : 0;
-      audio.setEngine(jumpPhase === 'none' ? throttle * (tel.boost ? 1.2 : 1) : 1, tel.boost, Math.min(1, speedFrac));
-      audio.setRcs(rcsLevel);
 
       // ── Radio. ──
       commsCool -= dt;
@@ -1652,12 +1768,23 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
           break;
         }
       }
+      // A friendly world does more than talk: it tops the ship up while it
+      // stays inside the hail.
+      const supplying = !!hailing && pilot === 'ship' && crashT < 0 && !dockedTo && jumpPhase === 'none';
+      if (supplying) {
+        shield = Math.min(MAX_SHIELD, shield + SUPPLY_RATE * dt);
+        hull = Math.min(MAX_HULL, hull + SUPPLY_RATE * dt);
+        energy = Math.min(1, energy + 0.4 * dt);
+        boostCharge = Math.min(1, boostCharge + 0.25 * dt);
+        tel.shield = shield;
+        tel.hp = hull;
+      }
+      tel.supply = supplying;
       if (commsLine < 0) {
         if (hailing && commsCool <= 0 && pilot === 'ship' && crashT < 0) {
           commsLine = 0;
           commsT = 0;
           commsFrom = hailing.id;
-          radio.open();
         }
       } else {
         commsT += dt;
@@ -1665,18 +1792,14 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
         if (commsLine === 0 && commsT > 0.7) {
           commsLine = 1;
           commsT = 0;
-          radio.speak(COMMS_LINE_SEC * 0.85, 11);
         } else if (commsLine >= 1 && commsLine <= COMMS_LINES && commsT > COMMS_LINE_SEC + COMMS_GAP_SEC) {
           commsLine += 1;
           commsT = 0;
-          if (commsLine <= COMMS_LINES) radio.speak(COMMS_LINE_SEC * 0.85, 11 + commsLine * 7);
-          else radio.close();
         } else if (commsLine > COMMS_LINES && commsT > 1.2) {
           commsLine = -1;
           commsCool = COMMS_COOLDOWN;
         }
         if (gone && commsLine >= 0) {
-          radio.close();
           commsLine = -1;
           commsCool = 20;
         }
@@ -1726,6 +1849,9 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
               if (body.kind === 'station') {
                 body.hp = (body.hp ?? STATION_HP) - 1;
                 if (body.hp <= 0) destroyStation(body, b.mesh.position);
+              } else if (body.id === orderId) {
+                orderHits -= 1;
+                if (orderHits <= 0) destroyWorld(body, b.mesh.position);
               }
               spent = true;
               break;
@@ -1743,12 +1869,10 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       const contactPos = aliens.contactPos ?? null;
       if (contactState === 'hostile' && enemies.length > 0 && lastEnemies === 0) {
         setAlert('hostile', 2.5);
-        audio.warn('danger');
       }
       lastEnemies = enemies.length;
       if (contactState === 'scan' && lastContact !== 'scan') {
         setAlert('contact', 3);
-        audio.warn('caution');
       }
       lastContact = contactState;
       tel.contact = contactState;
@@ -1780,12 +1904,10 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       if (input.targetRequest) {
         navId = input.targetRequest;
         input.targetRequest = null;
-        audio.warn('lock');
       }
       if (input.targetStep) {
         navId = stepTarget(candidates, navId, me.position, input.targetStep);
         input.targetStep = 0;
-        audio.warn('lock');
       }
       const navC = navId ? candidates.find((c) => c.id === navId) : undefined;
       if (navC) {
@@ -1848,6 +1970,17 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       updateDust(dt, speed);
       updateTunnel();
 
+      // ── Standing order: one world in this system to take apart. ──
+      orderDoneHold -= dt;
+      if (orderId) {
+        const target = world.bodies.find((b) => b.id === orderId);
+        if (!target || target.destroyed || me.position.distanceTo(target.position) > SYSTEM_REACH) orderId = '';
+      }
+      if (!orderId && orderDoneHold <= 0 && jumpPhase === 'none' && crashT < 0) pickOrder(world, me.position);
+      tel.orderId = orderId;
+      tel.orderIntegrity = orderId ? Math.max(0, orderHits / ORDER_HITS) : 0;
+      tel.orderDone = orderDoneHold > 0;
+
       // ── Expedition log. ──
       missionCtx.nearId = tel.nearId;
       missionCtx.altRadii = near ? nearD / near.radius : 99;
@@ -1870,7 +2003,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
           tel.discovery = unlocked;
           tel.discoveryCount = missions.count();
           discoveryHold = DISCOVERY_HOLD;
-          audio.warn('discovery');
         }
       }
       discoveryHold -= dt;
@@ -1897,6 +2029,8 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
       tel.shake = rig.shake();
       tel.respawnIn = 0;
       tel.canBoard = pilot === 'eva' && evaG.position.distanceTo(group.position) < BOARD_RANGE;
+      tel.docked = !!dockedTo;
+      tel.dockedTo = dockedTo ? dockedTo.id : '';
       invQ.copy(me.quaternion).invert();
       let n = 0;
       const blip = (p: THREE.Vector3) => {
@@ -1924,7 +2058,6 @@ export function createPlayerShip(session: FlightSession): PlayerShipHandle {
     },
     dispose() {
       audio.dispose();
-      radio.dispose();
       crash.dispose();
       boltGeom.dispose();
       boltMat.dispose();

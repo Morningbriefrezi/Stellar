@@ -32,6 +32,10 @@ export interface CameraFrame {
   fov: number;
   /** Local-space eye for the cockpit view. */
   cockpitEye: THREE.Vector3;
+  /** Right-drag free look: the chase rig walks this far around the hull
+   *  (rad). Both zero puts it back on the tail. */
+  orbitYaw: number;
+  orbitPitch: number;
   /** 0..1 — atmospheric heating; buffets the rig. */
   heat: number;
   /** Where the camera looks while the wreck burns. */
@@ -66,6 +70,12 @@ export function makeCameraRig(): CameraRig {
   const headLag = new THREE.Vector3();
   const bankedUp = new THREE.Vector3();
   const rollQ = new THREE.Quaternion();
+  const offset = new THREE.Vector3();
+  const orbitRight = new THREE.Vector3();
+  const yawQ = new THREE.Quaternion();
+  const pitchQ = new THREE.Quaternion();
+  let orbitYaw = 0;
+  let orbitPitch = 0;
   let snap = true;
   let prevVFwd = 0;
   let accel = 0;
@@ -74,6 +84,14 @@ export function makeCameraRig(): CameraRig {
   let back = 0;
   let clock = 0;
   let lastView: CameraView = 'chase';
+
+  /** Shortest way round to the commanded orbit angle. */
+  const toward = (from: number, to: number, k: number) => {
+    let d = to - from;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return from + d * k;
+  };
 
   return {
     update(dt, f, camera) {
@@ -125,10 +143,22 @@ export function makeCameraRig(): CameraRig {
         back += (backTarget - back) * (1 - Math.exp(-dt * 3.5));
         // Turning swings the rig to the outside and lets it fall on a climb.
         const swing = f.camBack * 0.35;
-        target.copy(f.position)
-          .addScaledVector(fwd, -back)
+        offset.copy(fwd).multiplyScalar(-back)
           .addScaledVector(up, f.camUp - f.angular.x * swing * 0.5)
           .addScaledVector(right, f.angular.y * swing);
+        // Free look: walk the rig around the hull and pin the gaze on it, so
+        // the ship can be inspected from any angle and released back to the tail.
+        const ok = snap ? 1 : 1 - Math.exp(-dt * 9);
+        orbitYaw = toward(orbitYaw, f.orbitYaw, ok);
+        orbitPitch += (f.orbitPitch - orbitPitch) * ok;
+        const orbiting = Math.min(1, Math.hypot(orbitYaw, orbitPitch) / 0.35);
+        if (orbiting > 0.001) {
+          yawQ.setFromAxisAngle(up, orbitYaw);
+          orbitRight.copy(right).applyQuaternion(yawQ);
+          pitchQ.setFromAxisAngle(orbitRight, orbitPitch);
+          offset.applyQuaternion(yawQ).applyQuaternion(pitchQ);
+        }
+        target.copy(f.position).add(offset);
         if (snap) {
           camPos.copy(target);
           camUp.copy(up);
@@ -145,8 +175,8 @@ export function makeCameraRig(): CameraRig {
         camera.position.copy(camPos);
         camera.up.copy(camUp);
         look.copy(f.position)
-          .addScaledVector(fwd, f.lookAhead)
-          .addScaledVector(right, -f.angular.y * f.lookAhead * 0.12);
+          .addScaledVector(fwd, f.lookAhead * (1 - orbiting))
+          .addScaledVector(right, -f.angular.y * f.lookAhead * 0.12 * (1 - orbiting));
         camera.lookAt(look);
       }
 

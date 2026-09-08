@@ -359,6 +359,36 @@ describe('EVA and stations', () => {
     expect(iss.destroyed).toBe(true);
   });
 
+  it('comes alongside a station instead of wrecking it when it drifts in slowly', () => {
+    const iss = body('iss', 1, 0.0005, 0.11, 0, 1);
+    iss.kind = 'station';
+    iss.position.set(1, 0, EARTH_R * 5 - 0.003);
+    // Only Earth and the station: the Sun's pull would bend the run off the
+    // berth over the minute this takes at docking speed.
+    world.bodies = [world.bodies[1], iss];
+    // A whisper of throttle: the drive settles far below docking speed.
+    session.input.thrust = 0.03;
+    let docked = false;
+    for (let i = 0; i < 3600 && !docked; i++) {
+      step(1);
+      docked = session.telemetry.docked;
+    }
+    expect(docked).toBe(true);
+    expect(session.telemetry.crashed).toBe(false);
+    expect(iss.destroyed).toBeFalsy();
+    expect(session.telemetry.dockedTo).toBe('iss');
+    // The berth puts the ship back together, and thrust casts off again.
+    session.input.thrust = 0;
+    ship.takeDamage(160);
+    const hull = session.telemetry.hp;
+    expect(hull).toBeLessThan(100);
+    seconds(2);
+    expect(session.telemetry.hp).toBeGreaterThan(hull);
+    session.input.thrust = 1;
+    step(2);
+    expect(session.telemetry.docked).toBe(false);
+  });
+
   it('bolts spark off bodies and take a station apart', () => {
     const iss = body('iss', 1, 0.0015, 0.11, 0, 1);
     iss.kind = 'station';
@@ -369,6 +399,24 @@ describe('EVA and stations', () => {
     seconds(3);
     expect(iss.destroyed).toBe(true);
     expect(session.telemetry.crashed).toBe(false);
+  });
+});
+
+describe('standing order', () => {
+  it('names a world in this system, spares Earth, and blows it apart under fire', () => {
+    world.bodies[0].kind = 'star';
+    const mars = body('mars', 1, 0.004, 3390, 0.1, 1);
+    mars.position.set(1, 0, EARTH_R * 5 + 0.06);
+    world.bodies.push(mars);
+    step(1);
+    expect(session.telemetry.orderId).toBe('mars');
+    expect(session.telemetry.orderIntegrity).toBe(1);
+    ship.group.lookAt(mars.position);
+    session.input.fire = true;
+    seconds(20);
+    expect(mars.destroyed).toBe(true);
+    // Nothing left in reach that the order is allowed to name.
+    expect(session.telemetry.orderId).toBe('');
   });
 });
 
@@ -526,6 +574,23 @@ describe('flight review regressions', () => {
     expect(camera.position.distanceTo(origin)).toBeLessThan(0.003);
     const matrixPosition = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
     expect(matrixPosition.distanceTo(camera.position)).toBeLessThan(1e-9);
+  });
+
+  it('walks the chase camera round the hull on a right-drag and back on release', () => {
+    faceAway();
+    seconds(1);
+    const behind = camera.position.clone();
+    session.input.orbiting = true;
+    session.input.orbitYaw = Math.PI;
+    seconds(2);
+    // Half a turn puts the lens on the far side, still looking at the ship.
+    expect(camera.position.distanceTo(behind)).toBeGreaterThan(0.002);
+    const toShip = ship.group.position.clone().sub(camera.position).normalize();
+    const lens = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    expect(lens.dot(toShip)).toBeGreaterThan(0.98);
+    session.input.orbiting = false;
+    seconds(2);
+    expect(camera.position.distanceTo(behind)).toBeLessThan(0.002);
   });
 
   it('keeps targeting finite at the camera plane and points behind targets outward', () => {

@@ -25,6 +25,16 @@ const MOUSE_SENS = 0.0011;
 /** One frame of pointer motion can turn the nose at most this far — a flick
  *  of the wrist should not spin the ship. */
 const MOUSE_MAX_STEP = 0.045;
+/** Right-drag orbit: radians of camera swing per pixel, and how far the
+ *  view may climb before the up vector would flip. */
+const ORBIT_SENS = 0.006;
+const ORBIT_PITCH_MAX = 1.2;
+
+/** Keep an accumulated yaw in (-π, π] so the camera unwinds the short way. */
+function wrapPi(a: number): number {
+  const t = (a + Math.PI) % (Math.PI * 2);
+  return (t < 0 ? t + Math.PI * 2 : t) - Math.PI;
+}
 
 /** Pull the chase camera in or push it out, within its stops. */
 export function zoomFlightCamera(input: FlightInput, direction: number) {
@@ -90,10 +100,30 @@ export function attachDesktopControls(
   };
   const onMouseMove = (e: MouseEvent) => {
     if (!session.active || session.paused) return;
+    // Right button held: the pointer walks the camera around the hull
+    // instead of steering, so the ship can be looked at from any angle.
+    if (input.orbiting) {
+      input.orbitYaw = wrapPi(input.orbitYaw + e.movementX * ORBIT_SENS);
+      input.orbitPitch = THREE.MathUtils.clamp(input.orbitPitch + e.movementY * ORBIT_SENS, -ORBIT_PITCH_MAX, ORBIT_PITCH_MAX);
+      return;
+    }
     if (!document.pointerLockElement && !(e.buttons & 1)) return;
     input.mouseDX += e.movementX;
     input.mouseDY += e.movementY;
   };
+  const onMouseDown = (e: MouseEvent) => {
+    if (e.button !== 2 || session.paused) return;
+    input.orbiting = true;
+    input.orbitYaw = 0;
+    input.orbitPitch = 0;
+  };
+  const endOrbit = (e?: MouseEvent) => {
+    if (e && e.button !== 2) return;
+    input.orbiting = false;
+    input.orbitYaw = 0;
+    input.orbitPitch = 0;
+  };
+  const onContextMenu = (e: MouseEvent) => e.preventDefault();
   const onWheel = (e: WheelEvent) => {
     if (session.paused) return;
     e.preventDefault();
@@ -103,6 +133,7 @@ export function attachDesktopControls(
     pressed.clear();
     sync();
     input.mouseDX = input.mouseDY = 0;
+    endOrbit();
   };
   let lockHeld = false;
   const onLockChange = () => {
@@ -117,6 +148,9 @@ export function attachDesktopControls(
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mouseup', endOrbit);
+  window.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('blur', onBlur);
   document.addEventListener('pointerlockchange', onLockChange);
@@ -130,6 +164,9 @@ export function attachDesktopControls(
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mousedown', onMouseDown);
+    window.removeEventListener('mouseup', endOrbit);
+    window.removeEventListener('contextmenu', onContextMenu);
     window.removeEventListener('wheel', onWheel);
     window.removeEventListener('blur', onBlur);
     document.removeEventListener('pointerlockchange', onLockChange);
@@ -159,4 +196,7 @@ export function clearFlightInput(input: FlightInput) {
   input.targetClear = false;
   input.targetRequest = null;
   input.camZoom = 1;
+  input.orbiting = false;
+  input.orbitYaw = 0;
+  input.orbitPitch = 0;
 }

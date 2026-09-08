@@ -169,8 +169,10 @@ const SURFACE_G: Record<SolarBodyId, number> = {
   sun: 274, mercury: 3.7, venus: 8.87, earth: 9.81, mars: 3.71,
   jupiter: 24.79, saturn: 10.44, uranus: 8.87, neptune: 11.15, pluto: 0.62,
 };
+/** Earth's air stops short of 1.14 radii on purpose: that is where the
+ *  station orbits, and a ship coming alongside it must not be burning. */
 const ATMOSPHERE: Record<SolarBodyId, number> = {
-  sun: 1.5, mercury: 1, venus: 1.3, earth: 1.25, mars: 1.15,
+  sun: 1.5, mercury: 1, venus: 1.3, earth: 1.1, mars: 1.15,
   jupiter: 1.22, saturn: 1.22, uranus: 1.2, neptune: 1.2, pluto: 1,
 };
 
@@ -1088,6 +1090,8 @@ export function SolarSystemCanvas({
       meshById.forEach((mesh, id) => {
         const b = bodyFor(id, id === 'sun' ? 'star' : 'planet', worldRadiusForBody(id), MEAN_RADIUS_KM[id], SURFACE_G[id], ATMOSPHERE[id]);
         b.position.copy(mesh.position);
+        // A world taken apart under a standing order stays gone.
+        if (b.destroyed) mesh.visible = false;
         world.bodies.push(b);
       });
       // The Moon, every planet's moons, the belt's dwarf planets, the station.

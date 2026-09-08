@@ -1149,8 +1149,8 @@
         "centauriPrime": {
           "l1": "Unknown craft, this is Kaelith Harbour Control. We read your drive signature. You are welcome here.",
           "l2": "Hold your course above the cloud line. Our freighters keep the lower lanes.",
-          "l3": "We have watched your star for a long time. Your Sun rises in our east, as ours does in yours.",
-          "l4": "Transmission ends. Safe orbits, traveller."
+          "l3": "Your tanks read low from here. Stay inside the hail and the harbour will pass you fuel, stores and shield charge — no charge to a first visitor.",
+          "l4": "Take what you need, traveller. Transmission ends. Safe orbits."
         }
       },
       "hangar": "Hangar",
@@ -1198,7 +1198,9 @@
         "contact": "Unknown contact — scanning",
         "lowshield": "Low shield",
         "shielddown": "Shields down",
-        "hullcritical": "Hull critical"
+        "hullcritical": "Hull critical",
+        "docked": "Docked — hull, shields and banks restored",
+        "undocked": "Released — you have the con"
       },
       "hullLost": "Hull lost",
       "respawn": "Respawn in {n}",
@@ -1380,8 +1382,13 @@
         "t2": "Right keys — fire, boost, brake",
         "t3": "Tap the dial — cruise, fast, light speed",
         "t4": "Tap the compass — next target",
-        "t5": "Pause — top right"
-      }
+        "t5": "Pause — top right",
+        "r9": "Right mouse — hold and drag for a 360° look at the ship"
+      },
+      "dockedAt": "Docked at {body} — W to release",
+      "supplying": "Taking on fuel and stores",
+      "order": "Order · destroy {body}",
+      "orderDone": "Objective complete"
     }
   },
   "missionsPage": {

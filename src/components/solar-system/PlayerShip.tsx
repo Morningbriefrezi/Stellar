@@ -14,7 +14,7 @@ interface Stick { id: number; ox: number; oy: number; x: number; y: number }
 const STICK_RADIUS = 62;
 const SHIPS: ShipKind[] = ['kestrel', 'xfoil'];
 const BARS = ['shield', 'energy', 'boost'] as const;
-const KEY_ROWS = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'] as const;
+const KEY_ROWS = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9'] as const;
 const TOUCH_ROWS = ['t1', 't2', 't3', 't4', 't5'] as const;
 const HELP_SEEN = 'stellar_explore_help';
 const ICONS = [Shield, Zap, ChevronsUp];
@@ -41,6 +41,12 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
   const statusRef = useRef<HTMLSpanElement>(null);
   const markerRef = useRef<HTMLDivElement>(null);
   const markerNameRef = useRef<HTMLSpanElement>(null);
+  const commsRef = useRef<HTMLDivElement>(null);
+  const commsFromRef = useRef<HTMLSpanElement>(null);
+  const commsTextRef = useRef<HTMLParagraphElement>(null);
+  const orderRef = useRef<HTMLDivElement>(null);
+  const orderTextRef = useRef<HTMLSpanElement>(null);
+  const orderBarRef = useRef<HTMLSpanElement>(null);
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const barValRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const detachRef = useRef<(() => void) | null>(null);
@@ -219,9 +225,35 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
       if (root) root.dataset.view = tel.view;
       let status = '';
       if (tel.crashed) status = t('respawn', { n: Math.ceil(tel.respawnIn) });
+      else if (tel.docked) status = t('dockedAt', { body: name(tel.dockedTo) });
       else if (tel.alert) status = t(`alerts.${tel.alert}`, { target: t(`systems.${tel.targetName}`), system: t(`systems.${tel.systemName}`) });
+      else if (tel.supply) status = t('supplying');
       else if (tel.pilot === 'eva') status = t(tel.canBoard ? 'evaBoardTouch' : 'evaOut');
       text(statusRef.current, status);
+
+      // Incoming transmission: the harbour that hails, one line at a time.
+      const comms = commsRef.current;
+      if (comms) {
+        const key = `comms.${tel.commsFrom}.l${tel.commsLine}`;
+        const on = tel.commsLine > 0 && t.has(key);
+        comms.hidden = !on;
+        if (on) {
+          text(commsFromRef.current, t('commsHeader', { from: name(tel.commsFrom) }));
+          text(commsTextRef.current, t(key));
+        }
+      }
+
+      // Standing order: the world the deck wants taken apart.
+      const order = orderRef.current;
+      if (order) {
+        const on = !!tel.orderId || tel.orderDone;
+        order.hidden = !on;
+        order.dataset.done = String(tel.orderDone);
+        if (on) {
+          text(orderTextRef.current, tel.orderDone ? t('orderDone') : t('order', { body: name(tel.orderId) }));
+          orderBarRef.current?.style.setProperty('transform', `scaleX(${tel.orderDone ? 0 : tel.orderIntegrity})`);
+        }
+      }
       const levels = [tel.shield / tel.maxShield, tel.energy, tel.boostCharge];
       levels.forEach((level, i) => {
         const pct = Math.round(Math.max(0, Math.min(1, level)) * 100);
@@ -333,6 +365,14 @@ export function PlayerShip({ session, onActiveChange }: PlayerShipProps) {
             </div>
           )}
           <div ref={markerRef} className="flight-hud__marker" hidden><span ref={markerNameRef} /></div>
+          <div ref={commsRef} className="flight-hud__comms" role="status" hidden>
+            <span ref={commsFromRef} className="flight-hud__comms-from" />
+            <p ref={commsTextRef} />
+          </div>
+          <div ref={orderRef} className="flight-hud__order" hidden>
+            <span ref={orderTextRef} />
+            <span className="flight-hud__track"><span ref={orderBarRef} /></span>
+          </div>
           <div className="flight-hud__console">
             <button type="button" className="flight-hud__radar" aria-label={t('target')} onClick={() => { session.input.targetStep = 1; }} disabled={paused}>
               <canvas ref={radarRef} aria-hidden />

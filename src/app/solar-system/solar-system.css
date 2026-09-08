@@ -966,6 +966,49 @@
 .flight-hud__marker[hidden] { display: none; }
 
 /* ── The console ── */
+/* ── Incoming transmission, top centre: header and one line at a time ── */
+.flight-hud__comms {
+  position: absolute;
+  top: max(20px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100% - 220px));
+  padding: 10px 14px;
+  border: 1px solid var(--hud-line);
+  border-radius: 4px;
+  background: var(--hud-glass);
+  display: grid;
+  gap: 6px;
+}
+.flight-hud__comms[hidden] { display: none; }
+.flight-hud__comms-from {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-accent);
+}
+.flight-hud__comms p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--hud-ink); }
+
+/* ── Standing order, top right under the pause keys ── */
+.flight-hud__order {
+  position: absolute;
+  top: calc(max(16px, env(safe-area-inset-top)) + 56px);
+  right: max(16px, env(safe-area-inset-right));
+  width: 190px;
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--hud-line);
+  border-radius: 4px;
+  background: var(--hud-glass);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.flight-hud__order[hidden] { display: none; }
+.flight-hud__order[data-done='true'] { color: var(--hud-accent); border-color: var(--hud-accent); }
+.flight-hud__order[data-done='true'] .flight-hud__track { display: none; }
+
 .flight-hud__console {
   position: absolute;
   left: max(12px, env(safe-area-inset-left));
@@ -1117,6 +1160,8 @@
   .flight-hud__aux button span { display: none; }
   .flight-hud__aux { gap: 7px; }
   .flight-hud__help { top: auto; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 118px); font-size: 11px; }
+  .flight-hud__comms { width: calc(100% - 24px); top: auto; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 118px); }
+  .flight-hud__order { width: 140px; font-size: 9px; }
 }
 @media (min-width: 600px) {
   .flight-hud__console { gap: 20px; bottom: max(20px, env(safe-area-inset-bottom)); }
