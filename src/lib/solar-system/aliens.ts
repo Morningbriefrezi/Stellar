@@ -231,7 +231,9 @@ export function makeAlienEncounters(): AlienHandle {
   group.name = 'alienEncounters';
   group.visible = false;
 
-  const S = 0.012;
+  // Rocket-scale, and set against the player's hull: a saucer spans a few
+  // Kestrel lengths, not a moon.
+  const S = 0.0028;
   const glowTex = glowSprite();
 
   const saucer = buildSaucer(S, glowTex);

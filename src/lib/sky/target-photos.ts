@@ -77,3 +77,31 @@ export const TARGET_PHOTOS: Record<string, TargetPhoto> = {
 export function getTargetPhoto(id: string): TargetPhoto | null {
   return TARGET_PHOTOS[id] ?? null;
 }
+
+/**
+ * Uniform icon set — every target normalised to one apparent size on a common
+ * near-black field, so a rail of them reads as equal discs instead of a dozen
+ * differently-framed crops. Planets and DSOs are cropped from the photos above;
+ * the two bright stars are drawn (a star has no disc to photograph).
+ * Regenerate with `node scripts/build-target-icons.mjs`.
+ */
+export const TARGET_ICONS: Record<string, { src: string; alt: string }> = {
+  sun: { src: '/sky/targets/icons/sun.png', alt: 'The Sun' },
+  moon: { src: '/sky/targets/icons/moon.png', alt: 'The Moon' },
+  mercury: { src: '/sky/targets/icons/mercury.png', alt: 'Mercury' },
+  venus: { src: '/sky/targets/icons/venus.png', alt: 'Venus' },
+  mars: { src: '/sky/targets/icons/mars.png', alt: 'Mars' },
+  jupiter: { src: '/sky/targets/icons/jupiter.png', alt: 'Jupiter' },
+  saturn: { src: '/sky/targets/icons/saturn.png', alt: 'Saturn' },
+  uranus: { src: '/sky/targets/icons/uranus.png', alt: 'Uranus' },
+  neptune: { src: '/sky/targets/icons/neptune.png', alt: 'Neptune' },
+  sirius: { src: '/sky/targets/icons/sirius.png', alt: 'Sirius' },
+  arcturus: { src: '/sky/targets/icons/arcturus.png', alt: 'Arcturus' },
+  m31: { src: '/sky/targets/icons/m31.png', alt: 'Andromeda Galaxy' },
+  m42: { src: '/sky/targets/icons/m42.png', alt: 'Orion Nebula' },
+  m57: { src: '/sky/targets/icons/m57.png', alt: 'Ring Nebula' },
+};
+
+export function getTargetIcon(id: string): { src: string; alt: string } | null {
+  return TARGET_ICONS[id] ?? null;
+}

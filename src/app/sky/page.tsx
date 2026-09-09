@@ -23,7 +23,7 @@ import { CONSTELLATION_LINES, STAR_TO_CONSTELLATION, positionStars } from '@/lib
 import type { ConstellationStar } from '@/components/sky/finder/SkyMap';
 import { azimuthToCompass, altitudeToFists, moonPhaseKey } from '@/lib/sky/directions';
 import { zoneForLocation } from '@/lib/sky/timezones';
-import { getTargetPhoto } from '@/lib/sky/target-photos';
+import { getTargetIcon } from '@/lib/sky/target-photos';
 import EventBanner from '@/components/sky/EventBanner';
 import SkyLocationModal from '@/components/sky/SkyLocationModal';
 import { SkyMap } from '@/components/sky/finder/SkyMap';
@@ -722,6 +722,7 @@ export default function SkyPage() {
                   />
                 ))}
               </ol>
+              <TipsCard tips={tips} />
             </section>
             </div>
 
@@ -730,7 +731,6 @@ export default function SkyPage() {
                 <span className="skx__card-label">{tUi('tonightOverview')}</span>
                 <NightOverview sunsetISO={sunsetISO} sunriseISO={sunriseISO} openISO={windowOpen} closeISO={windowClose} tz={tz} dateLocale={dateLocale} />
               </section>
-              <TipsCard tips={tips} />
             </div>
 
             {/* ── Multi-day outlook (retained below the new hero) ── */}
@@ -864,7 +864,7 @@ function VisCard({ obj, active, top, onSelect, tDir }: {
   tDir: (k: string) => string;
 }) {
   const tUi = useTranslations('skyUi');
-  const photo = getTargetPhoto(obj.id);
+  const icon = getTargetIcon(obj.id);
   const badge = visBadge(obj, top, tUi);
   const [imgBroken, setImgBroken] = useState(false);
   return (
@@ -876,11 +876,11 @@ function VisCard({ obj, active, top, onSelect, tDir }: {
         aria-pressed={active}
       >
         <span className="skx__vis-thumb">
-          {photo && !imgBroken ? (
+          {icon && !imgBroken ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" onError={() => setImgBroken(true)} />
+            <img src={icon.src} alt={icon.alt} loading="lazy" decoding="async" onError={() => setImgBroken(true)} />
           ) : (
-            <PlanetIcon id={obj.id} type={obj.type} magnitude={obj.magnitude} phase={obj.phase} size={48} glow={false} />
+            <PlanetIcon id={obj.id} type={obj.type} magnitude={obj.magnitude} phase={obj.phase} size={40} glow={false} />
           )}
         </span>
         <span className="skx__vis-name">{obj.name}</span>

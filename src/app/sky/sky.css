@@ -4453,7 +4453,7 @@
   appearance: none;
   cursor: pointer;
   width: 124px;
-  min-height: 172px;
+  min-height: 150px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4467,15 +4467,17 @@
 .skx__vis-card:hover { transform: translateY(-2px); border-color: var(--border-strong); }
 .skx__vis-card.is-active { border-color: rgba(245, 166, 35, 0.45); background: rgba(245, 166, 35, 0.07); }
 .skx__vis-thumb {
-  width: 58px;
-  height: 58px;
-  border-radius: 14px;
+  /* Every target ships pre-normalised to the same apparent size (see
+     scripts/build-target-icons.mjs), so one circular chip fits all of them. */
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.4);
+  background: #05070E;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .skx__vis-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .skx__vis-name {
@@ -4527,7 +4529,15 @@
   background: linear-gradient(90deg, rgba(34, 197, 94, 0.58), rgba(34, 184, 207, 0.9));
   border-radius: 999px;
 }
-.skx__ov-window-label { position: absolute; inset: 0; }
+.skx__ov-window-label {
+  /* The window is an 8px bar — the label is for screen readers, not the eye. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .skx__ov-ends { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-top: 9px; }
 .skx__ov-end { display: flex; flex-direction: column; gap: 1px; color: var(--text-muted); }
 .skx__ov-end svg { color: var(--terracotta); }
@@ -4604,7 +4614,7 @@
 /* ── Wider screens — the same sections, roomier ── */
 @media (min-width: 721px) {
   .skx__vis-card { width: 140px; }
-  .skx__vis-thumb { width: 64px; height: 64px; }
+  .skx__vis-thumb { width: 52px; height: 52px; }
 }
 @media (min-width: 921px) {
   .skx .sky-obs__wrap { max-width: 1120px; }
@@ -4612,7 +4622,6 @@
   .skx__summary { padding: 13px 10px; }
 }
 @media (min-width: 1120px) {
-  .skx .sky-obs__wrap { max-width: 1240px; }
   .skx__duo { gap: 16px; }
 }
 
@@ -4642,29 +4651,42 @@
   .skx__topbar .skx__qring svg { width: 34px; height: 34px; }
 }
 
-/* Extra-wide: a touch more room for the dome. */
-@media (min-width: 1440px) {
-  .skx .sky-obs__wrap { max-width: 1340px; }
-  .skx__dash > .skx__map .sky-map { max-width: min(100%, 700px); }
-}
-
 /* ── Desktop dashboard: map (left) + Next-best-time/Visible-now rail (right),
       then Tonight-overview/Tips. Mockup parity. Phones keep the stacked column. ── */
 @media (min-width: 1024px) {
+  .skx {
+    /* Ceiling for the dome's width. */
+    --skx-dome: 620px;
+    /* Height left for the map + visible-now row once the header above and the
+       night bar below have taken their share of the first screen. */
+    --skx-row: max(560px, calc(100dvh - 320px));
+    /* The dome is square, so that row height sets its diameter and the map
+       column is then cut to fit it exactly — no dead margin either side. */
+    --skx-dome-size: min(var(--skx-dome), calc(var(--skx-row) - 78px));
+  }
+  /* The page column follows the dashboard, so the header, the two panels and
+     the rails below all keep one edge. */
+  .skx .sky-obs__wrap { max-width: clamp(1060px, calc(var(--skx-dome-size) + 722px), 1340px); }
+
   .skx__dash {
     display: grid;
-    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    grid-template-columns: calc(var(--skx-dome-size) + 26px) minmax(0, 1fr);
+    grid-template-rows: minmax(var(--skx-row), auto) auto auto;
     grid-template-areas:
       "map      right"
-      "overview tips";
+      "rule     rule"
+      "overview overview";
     align-items: start;
-    gap: 14px;
+    gap: 12px;
   }
   .skx__dash > .skx__map      { grid-area: map; align-self: stretch; }
   .skx__dash > .skx__rightcol { grid-area: right; align-self: stretch; }
-  .skx__dash > .skx__overview { grid-area: overview; }
-  .skx__dash > .skx__tips     { grid-area: tips; }
+  .skx__dash > .skx__overview { grid-area: overview; padding: 10px 14px 11px; }
   .skx__dash .skx__look       { display: none; } /* not part of the desktop dashboard */
+  /* the small line that separates the night bar from the two panels above it */
+  .skx__dash::after { content: ''; grid-area: rule; height: 1px; background: var(--border); }
+  .skx__dash > .skx__overview .skx__ov { margin-top: 7px; }
+  .skx__dash > .skx__overview .skx__ov-ends { margin-top: 7px; }
 
   /* Right column stacks next-best-time + visible-now, with visible-now growing
      to fill the column height so it stays flush under the next-best-time card
@@ -4675,12 +4697,15 @@
     gap: 14px;
     min-width: 0;
   }
-  .skx__rightcol > .skx__nbt     { flex: 0 0 auto; }
-  .skx__rightcol > .skx__visible { flex: 1 1 auto; }
+  .skx__rightcol > .skx__nbt     { flex: 0 0 auto; padding: 12px 14px 13px; }
+  .skx__rightcol > .skx__nbt .skx__nbt-row { margin-top: 8px; }
+  .skx__rightcol > .skx__visible { flex: 1 1 auto; min-height: 0; }
 
-  /* Map card centres a large dome and fills its column height. */
+  /* Map card centres a large dome and fills its column height. The dome is
+     capped by the viewport as well as the column so the map, the visible-now
+     rail and the night bar below all land on the first screen. */
   .skx__map { justify-content: center; }
-  .skx__map .sky-map { max-width: min(100%, 620px); }
+  .skx__map .sky-map { max-width: 100%; }
 
   /* Visible-now becomes a bordered card with a 3-up orb grid that fills height */
   .skx__visible {
@@ -4695,22 +4720,45 @@
   .skx__visible .skx__vis-rail {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
     overflow: visible;
     padding: 0;
-    margin-top: 12px;
+    margin-top: 10px;
     flex: 1;
     align-content: center; /* centre the 6 orbs in the column's height */
   }
   .skx__visible .skx__vis-rail > li { width: 100%; }
   .skx__visible .skx__vis-card {
     width: 100%;
-    min-height: 156px;
-    padding: 16px 8px;
+    min-height: 0;
+    padding: 9px 8px;
     justify-content: center;
-    gap: 8px;
+    gap: 3px;
   }
-  .skx__visible .skx__vis-thumb { width: 56px; height: 56px; }
+  .skx__visible .skx__vis-thumb { width: 44px; height: 44px; margin-bottom: 2px; }
+  .skx__visible .skx__vis-name { font-size: 13px; line-height: 1.2; }
+  .skx__visible .skx__vis-pos { line-height: 1.35; }
+  .skx__visible .skx__vis-badge { margin-top: 3px; padding: 2px 7px; }
+
+  /* Tips ride at the foot of the column behind a hairline — the same move the
+     azimuth ruler makes under the map, so both panels close the same way. */
+  .skx__visible > .skx__tips {
+    flex: 0 0 auto;
+    margin-top: 10px;
+    padding: 9px 0 0;
+    border: none;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .skx__visible > .skx__tips .skx__tips-text { margin-top: 5px; font-size: 12.5px; }
+}
+
+/* Extra-wide desktops give the dome more room, when the window is tall enough
+   to use it. Declared after the block above so it wins the cascade. */
+@media (min-width: 1440px) {
+  .skx { --skx-dome: 700px; }
 }
 
 /* ── Phones — tighten the summary + duos ── */

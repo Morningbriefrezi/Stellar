@@ -1893,7 +1893,10 @@ export function makeEarthRocket(earthRadius: number): EarthRocketHandle {
  * Sun–Earth L2 point on the planet's shadow side. Deliberately tiny (the
  * station spans ~1/6 of the Moon's diameter here) and hugging the planet on
  * faint orbit rings, so they read as spacecraft, never as extra moons. The
- * named ones carry small mono labels. Epoch-driven like everything else.
+ * named ones carry small mono labels. The station is modelled properly —
+ * truss, arrays, radiators, module stack, forward docking port — because a
+ * ship in Explore Mode can come alongside and berth on it. Epoch-driven like
+ * everything else.
  */
 export interface EarthSatellitesHandle {
   group: THREE.Group;
@@ -1980,19 +1983,70 @@ export function makeEarthSatellites(earthRadius: number, lite: boolean): EarthSa
   const buildSat = (kind: SatSpec['kind']): THREE.Group => {
     const g = new THREE.Group();
     if (kind === 'station') {
-      // Truss with two double solar wings — the classic station silhouette.
-      const truss = new THREE.Mesh(new THREE.BoxGeometry(b * 2.6, b * 0.24, b * 0.24), bodyMat);
+      // The real thing, in miniature: the integrated truss running port to
+      // starboard with four solar array wings out each side, white radiator
+      // panels turned edge-on to them, the pressurised module stack crossing
+      // it fore-and-aft, Zvezda's radiator, and a docking node at the front
+      // with a berthed Soyuz on it. Ships dock at the +Z end.
+      const truss = new THREE.Mesh(new THREE.BoxGeometry(b * 3.4, b * 0.16, b * 0.16), bodyMat);
       g.add(truss);
-      const hab = new THREE.Mesh(new THREE.CylinderGeometry(b * 0.22, b * 0.22, b * 1.1, 8), bodyMat);
-      hab.rotation.x = Math.PI / 2;
-      g.add(hab);
+      // Solar array wings: two pairs a side, on short rotary joints.
       for (const sx of [-1, 1]) {
+        const joint = new THREE.Mesh(new THREE.CylinderGeometry(b * 0.09, b * 0.09, b * 0.14, 8), foilMat);
+        joint.rotation.z = Math.PI / 2;
+        joint.position.x = sx * b * 1.25;
+        g.add(joint);
         for (const sz of [-1, 1]) {
-          const wing = new THREE.Mesh(new THREE.BoxGeometry(b * 0.9, b * 0.02, b * 0.55), panelMat);
-          wing.position.set(sx * b * 1.05, 0, sz * b * 0.42);
-          g.add(wing);
+          for (const out of [1, 1.72]) {
+            const wing = new THREE.Mesh(new THREE.BoxGeometry(b * 0.62, b * 0.015, b * 0.42), panelMat);
+            wing.position.set(sx * b * out, 0, sz * b * 0.28);
+            g.add(wing);
+          }
         }
+        // Thermal radiators: white, edge-on to the arrays.
+        const rad = new THREE.Mesh(new THREE.BoxGeometry(b * 0.5, b * 0.32, b * 0.012), bodyMat);
+        rad.position.set(sx * b * 0.62, b * 0.2, 0);
+        g.add(rad);
       }
+      // Pressurised stack: Zarya / Unity / Destiny end to end, with the
+      // Columbus and Kibo labs off the sides of the forward node.
+      const stack = new THREE.Mesh(new THREE.CylinderGeometry(b * 0.17, b * 0.17, b * 1.5, 10), bodyMat);
+      stack.rotation.x = Math.PI / 2;
+      g.add(stack);
+      for (const sx of [-1, 1]) {
+        const lab = new THREE.Mesh(new THREE.CylinderGeometry(b * 0.13, b * 0.13, b * 0.42, 8), bodyMat);
+        lab.rotation.z = Math.PI / 2;
+        lab.position.set(sx * b * 0.3, 0, b * 0.5);
+        g.add(lab);
+      }
+      const aftRad = new THREE.Mesh(new THREE.BoxGeometry(b * 0.02, b * 0.44, b * 0.34), bodyMat);
+      aftRad.position.set(0, 0, -b * 0.62);
+      g.add(aftRad);
+      // Forward node and docking port — the ring a visiting ship aims at.
+      const node = new THREE.Mesh(new THREE.CylinderGeometry(b * 0.2, b * 0.2, b * 0.3, 10), bodyMat);
+      node.rotation.x = Math.PI / 2;
+      node.position.z = b * 0.86;
+      g.add(node);
+      const port = new THREE.Mesh(new THREE.TorusGeometry(b * 0.12, b * 0.03, 8, 16), foilMat);
+      port.position.z = b * 1.03;
+      g.add(port);
+      // A Soyuz berthed on the nadir port: descent module, service section,
+      // two small panels.
+      const soyuz = new THREE.Group();
+      const sm = new THREE.Mesh(new THREE.CylinderGeometry(b * 0.07, b * 0.07, b * 0.3, 8), foilMat);
+      sm.rotation.x = Math.PI / 2;
+      soyuz.add(sm);
+      const dm = new THREE.Mesh(new THREE.SphereGeometry(b * 0.08, 8, 8), bodyMat);
+      dm.position.z = b * 0.17;
+      soyuz.add(dm);
+      for (const sx of [-1, 1]) {
+        const pnl = new THREE.Mesh(new THREE.BoxGeometry(b * 0.3, b * 0.012, b * 0.13), panelMat);
+        pnl.position.x = sx * b * 0.2;
+        soyuz.add(pnl);
+      }
+      soyuz.position.set(0, -b * 0.34, -b * 0.2);
+      soyuz.rotation.x = Math.PI / 2;
+      g.add(soyuz);
     } else if (kind === 'telescope') {
       // Hubble: silver tube, foil aft shroud, two flat panels.
       const tube = new THREE.Mesh(new THREE.CylinderGeometry(b * 0.28, b * 0.28, b * 1.15, 10), bodyMat);
@@ -2101,7 +2155,7 @@ export function makeEarthSatellites(earthRadius: number, lite: boolean): EarthSa
   return {
     group,
     station: stationRec.node,
-    stationRadius: b * 1.3,
+    stationRadius: b * 1.9,
     setLabels(visible: boolean) {
       for (const m of labelMats) m.visible = visible;
     },

@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { softSpriteTexture } from '@/lib/solar-system/soft-sprite';
 
-export type ShipKind = 'kestrel' | 'lance';
+export type ShipKind = 'kestrel' | 'xfoil';
 
 /** A reaction-control jet: a sprite on the hull whose brightness answers
  *  the control inputs it opposes. Weights are signed: a jet with yaw +1
@@ -32,6 +32,8 @@ export interface WingPivot {
   /** Sweep (rad) when spread for combat, and when folded for speed. */
   open: number;
   closed: number;
+  /** Which axis the wing swings on: 'y' sweeps it back, 'z' fans it into an X. */
+  axis: 'y' | 'z';
 }
 
 export interface ShipParts {
@@ -77,7 +79,7 @@ interface Palette {
 function palette(accentHex: number, driveHex: number): Palette {
   const graphite = new THREE.MeshStandardMaterial({ color: 0x3a414b, roughness: 0.55, metalness: 0.5 });
   const titanium = new THREE.MeshStandardMaterial({ color: 0x7d8692, roughness: 0.42, metalness: 0.72 });
-  const panel = new THREE.MeshStandardMaterial({ color: 0xd9d5cc, roughness: 0.66, metalness: 0.18 });
+  const panel = new THREE.MeshStandardMaterial({ color: 0x9099a3, roughness: 0.6, metalness: 0.3 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x0f1216, roughness: 0.72, metalness: 0.45 });
   const accent = new THREE.MeshStandardMaterial({
     color: accentHex, roughness: 0.5, metalness: 0.2,
@@ -379,7 +381,7 @@ export function buildKestrel(H: number): ShipParts {
     const pivot = new THREE.Group();
     pivot.position.set(s * 0.6 * H, -0.02 * H, -0.5 * H);
     hull.add(pivot);
-    wings.push({ pivot, side: s, open: s * 0.12, closed: s * 0.62 });
+    wings.push({ pivot, side: s, open: s * 0.12, closed: s * 0.62, axis: 'y' });
     mesh(b, wingGeoms[s as 1 | -1], pal.titanium, 0, 0, 0, pivot);
     // Leading-edge strip in panel white, amber tip cap.
     const le = mesh(b, new THREE.BoxGeometry(2.9 * H, 0.06 * H, 0.14 * H), pal.panel, s * 1.5 * H, 0.03 * H, 0.65 * H, pivot);
@@ -422,91 +424,80 @@ export function buildKestrel(H: number): ShipParts {
 }
 
 /**
- * Lance — the interceptor. A narrow needle fuselage with a raised spine,
- * canards forward, two close-set nacelles each on a stub pylon, small
- * hard-swept wings off the nacelles, ice-blue accents, and a single big
- * engine between the nacelles.
+ * X-foil starfighter — the shape everyone knows: a long tapered nose on a
+ * boxy engine block, a faceted canopy with an astromech dome behind it, and
+ * four S-foils that lock flat for the run in and fan into an X for the
+ * attack. Each foil carries an engine at its root and a cannon at its tip,
+ * so opening them spreads the drives and the guns together. Forward is +Z.
  */
-export function buildLance(H: number): ShipParts {
-  const pal = palette(0x7fd8ff, 0x8fd4ff);
+export function buildXfoil(H: number): ShipParts {
+  const pal = palette(0xc4302a, 0x6fd0ff);
   const b = builder(H, pal);
   const hull = b.hull;
 
-  const nose = mesh(b, new THREE.ConeGeometry(0.34 * H, 2.8 * H, 6), pal.titanium, 0, 0, 4.0 * H);
+  // ── Fuselage: engine block aft, long nose forward. ──
+  mesh(b, new THREE.BoxGeometry(1.25 * H, 0.95 * H, 2.6 * H), pal.graphite, 0, 0, -0.5 * H);
+  mesh(b, new THREE.BoxGeometry(0.68 * H, 0.24 * H, 2.2 * H), pal.titanium, 0, 0.58 * H, -0.5 * H);
+  mesh(b, new THREE.BoxGeometry(0.78 * H, 0.2 * H, 2.0 * H), pal.dark, 0, -0.54 * H, -0.5 * H);
+  const nose = mesh(b, new THREE.CylinderGeometry(0.3 * H, 0.54 * H, 3.0 * H, 12), pal.titanium, 0, 0, 2.3 * H);
   nose.rotation.x = Math.PI / 2;
-  nose.rotation.y = Math.PI / 6;
-  mesh(b, hullSection(0.34 * H, 0.5 * H, 3.0 * H), pal.graphite, 0, 0, 1.1 * H);
-  mesh(b, hullSection(0.5 * H, 0.46 * H, 2.4 * H), pal.graphite, 0, 0, -1.6 * H);
-  mesh(b, new THREE.BoxGeometry(0.34 * H, 0.14 * H, 3.4 * H), pal.panel, 0, 0.5 * H, -0.6 * H);
-  mesh(b, new THREE.BoxGeometry(0.08 * H, 0.03 * H, 2.6 * H), pal.accent, 0, 0.58 * H, -0.4 * H);
-  mesh(b, new THREE.BoxGeometry(0.5 * H, 0.18 * H, 3.0 * H), pal.dark, 0, -0.42 * H, -0.2 * H);
-  // Probe on the nose.
-  mesh(b, new THREE.CylinderGeometry(0.02 * H, 0.04 * H, 1.1 * H, 6), pal.dark, 0, 0, 5.8 * H).rotation.x = Math.PI / 2;
-
-  // Canopy: a narrow blister well forward.
-  mesh(b, new THREE.BoxGeometry(0.5 * H, 0.2 * H, 1.6 * H), pal.dark, 0, 0.36 * H, 1.6 * H);
-  const canopy = mesh(b, new THREE.SphereGeometry(0.26 * H, 16, 12), pal.glass, 0, 0.46 * H, 1.6 * H);
-  canopy.scale.set(0.9, 0.6, 2.6);
-
-  // Sensor package: a flat array under the chin.
-  mesh(b, new THREE.BoxGeometry(0.4 * H, 0.08 * H, 0.6 * H), pal.dark, 0, -0.34 * H, 2.6 * H);
-  mesh(b, new THREE.SphereGeometry(0.11 * H, 10, 8), pal.dark, 0, -0.4 * H, 2.95 * H);
-
-  // Canards.
-  for (const s of [1, -1]) {
-    const c = mesh(b, new THREE.BoxGeometry(1.1 * H, 0.05 * H, 0.5 * H), pal.titanium, s * 0.8 * H, 0, 2.6 * H);
-    c.rotation.y = s * 0.55;
-    c.rotation.z = -s * 0.12;
+  const tip = mesh(b, new THREE.ConeGeometry(0.3 * H, 1.5 * H, 12), pal.titanium, 0, 0, 4.55 * H);
+  tip.rotation.x = Math.PI / 2;
+  mesh(b, new THREE.SphereGeometry(0.07 * H, 8, 8), pal.dark, 0, 0, 5.3 * H);
+  // Squadron stripes down the nose and side greebles that break up the block.
+  for (const side of [-1, 1]) {
+    const stripe = mesh(b, new THREE.BoxGeometry(0.12 * H, 0.04 * H, 1.6 * H), pal.accent, side * 0.17 * H, 0.4 * H, 2.4 * H);
+    stripe.rotation.x = -0.08;
+    mesh(b, new THREE.BoxGeometry(0.16 * H, 0.34 * H, 1.3 * H), pal.dark, side * 0.68 * H, -0.08 * H, -0.4 * H);
   }
 
-  // Nacelles on pylons, wings swept off them, chin cannons.
+  // ── Canopy in a dark coaming, astromech dome behind it. ──
+  mesh(b, new THREE.BoxGeometry(0.8 * H, 0.48 * H, 1.5 * H), pal.dark, 0, 0.54 * H, 1.0 * H);
+  const canopy = mesh(b, new THREE.SphereGeometry(0.4 * H, 14, 10), pal.glass, 0, 0.7 * H, 1.0 * H);
+  canopy.scale.set(0.85, 0.55, 1.5);
+  mesh(b, new THREE.SphereGeometry(0.28 * H, 14, 10), pal.titanium, 0, 0.7 * H, -0.35 * H);
+  const band = mesh(b, new THREE.SphereGeometry(0.285 * H, 14, 10), pal.accent, 0, 0.72 * H, -0.35 * H);
+  band.scale.set(1, 0.32, 1);
+
+  // ── Four S-foils on pivots at the corners of the block. Closed they lie
+  // almost flat; open they fan into the X. ──
   const wings: WingPivot[] = [];
   const cannonTips: THREE.Object3D[] = [];
-  const NX = 1.05 * H;
-  const wingGeoms = { 1: wingPanel(1, 1.2 * H, 0.35 * H, 2.2 * H, 0.08 * H), [-1]: wingPanel(-1, 1.2 * H, 0.35 * H, 2.2 * H, 0.08 * H) };
-  for (const s of [1, -1]) {
-    const px = s * NX;
-    mesh(b, new THREE.BoxGeometry(0.7 * H, 0.16 * H, 1.6 * H), pal.titanium, s * 0.7 * H, -0.06 * H, -0.5 * H);
-    const nac = mesh(b, new THREE.CylinderGeometry(0.44 * H, 0.4 * H, 3.6 * H, 14), pal.graphite, px, -0.08 * H, -1.0 * H);
-    nac.rotation.x = Math.PI / 2;
-    const intake = mesh(b, new THREE.CylinderGeometry(0.46 * H, 0.46 * H, 0.3 * H, 14, 1, true), pal.dark, px, -0.08 * H, 0.85 * H);
-    intake.rotation.x = Math.PI / 2;
-    // Ice-blue flash on the nacelle shoulder and a white panel strip.
-    mesh(b, new THREE.BoxGeometry(0.14 * H, 0.3 * H, 1.3 * H), pal.accent, px + s * 0.4 * H, 0.08 * H, 0, hull);
-    mesh(b, new THREE.BoxGeometry(0.16 * H, 0.06 * H, 2.2 * H), pal.panel, px, 0.42 * H, -0.8 * H);
-    const pivot = new THREE.Group();
-    pivot.position.set(px + s * 0.3 * H, -0.04 * H, -0.9 * H);
-    hull.add(pivot);
-    wings.push({ pivot, side: s, open: s * 0.3, closed: s * 0.75 });
-    mesh(b, wingGeoms[s as 1 | -1], pal.titanium, 0, 0, 0, pivot);
-    const pod = mesh(b, new THREE.CylinderGeometry(0.09 * H, 0.07 * H, 0.8 * H, 10), pal.graphite, s * 2.15 * H, 0, 0, pivot);
-    pod.rotation.x = Math.PI / 2;
-    navLight(b, s * 2.15 * H, 0, 0.45 * H, s > 0 ? 0xff3b30 : 0x30ff6a, 0.08 * H, pivot);
-    engine(b, px, -0.08 * H, -2.85 * H, 0.32 * H, 3.6 * H);
-    // Chin cannon.
-    const cannon = mesh(b, new THREE.CylinderGeometry(0.05 * H, 0.06 * H, 2.0 * H, 8), pal.dark, s * 0.32 * H, -0.3 * H, 2.2 * H);
-    cannon.rotation.x = Math.PI / 2;
-    const tip = new THREE.Object3D();
-    tip.position.set(s * 0.32 * H, -0.3 * H, 3.3 * H);
-    hull.add(tip);
-    cannonTips.push(tip);
-  }
-  // Central drive between the nacelles, and twin tail fins.
-  engine(b, 0, 0.05 * H, -2.9 * H, 0.3 * H, 4.4 * H);
-  for (const s of [1, -1]) {
-    const fin = mesh(b, new THREE.BoxGeometry(0.05 * H, 0.8 * H, 1.0 * H), pal.panel, s * 0.3 * H, 0.7 * H, -2.0 * H);
-    fin.rotation.z = s * 0.4;
-    fin.rotation.x = 0.2;
-    const edge = mesh(b, new THREE.BoxGeometry(0.06 * H, 0.05 * H, 0.9 * H), pal.accent, s * 0.55 * H, 1.03 * H, -2.05 * H);
-    edge.rotation.z = s * 0.4;
-    edge.rotation.x = 0.2;
+  const wingGeom = new THREE.BoxGeometry(3.2 * H, 0.08 * H, 1.1 * H);
+  const edgeGeom = new THREE.BoxGeometry(3.2 * H, 0.06 * H, 0.16 * H);
+  const stripeGeom = new THREE.BoxGeometry(1.9 * H, 0.1 * H, 0.2 * H);
+  const cannonGeom = new THREE.CylinderGeometry(0.055 * H, 0.07 * H, 2.5 * H, 8);
+  for (const side of [1, -1]) {
+    for (const layer of [1, -1]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.62 * H, layer * 0.16 * H, -0.6 * H);
+      hull.add(pivot);
+      wings.push({ pivot, side, open: layer * side * 0.34, closed: layer * side * 0.04, axis: 'z' });
+      mesh(b, wingGeom, pal.titanium, side * 1.72 * H, 0, 0, pivot);
+      mesh(b, edgeGeom, pal.panel, side * 1.72 * H, 0, 0.6 * H, pivot);
+      mesh(b, stripeGeom, pal.accent, side * 2.05 * H, layer * 0.03 * H, 0.1 * H, pivot);
+      // Engine at the root: intake forward, bell and plume aft.
+      const intake = mesh(b, new THREE.ConeGeometry(0.32 * H, 0.5 * H, 12), pal.dark, side * 0.45 * H, layer * 0.2 * H, 0.6 * H, pivot);
+      intake.rotation.x = Math.PI / 2;
+      const can = mesh(b, new THREE.CylinderGeometry(0.32 * H, 0.28 * H, 1.7 * H, 12), pal.graphite, side * 0.45 * H, layer * 0.2 * H, -0.5 * H, pivot);
+      can.rotation.x = Math.PI / 2;
+      engine(b, side * 0.45 * H, layer * 0.2 * H, -1.42 * H, 0.26 * H, 3.4 * H, pivot);
+      // Cannon along the foil, muzzle well ahead of the nose.
+      const cannon = mesh(b, cannonGeom, pal.dark, side * 3.3 * H, 0, 0.9 * H, pivot);
+      cannon.rotation.x = Math.PI / 2;
+      mesh(b, new THREE.SphereGeometry(0.09 * H, 8, 8), pal.panel, side * 3.3 * H, 0, 2.2 * H, pivot);
+      const t = new THREE.Object3D();
+      t.position.set(side * 3.3 * H, 0, 2.35 * H);
+      pivot.add(t);
+      cannonTips.push(t);
+      if (layer === 1) navLight(b, side * 3.38 * H, 0.06 * H, -0.2 * H, side > 0 ? 0xff3b30 : 0x30ff6a, 0.08 * H, pivot);
+    }
   }
 
-  standardRcs(b, 2.4 * H, -2.0 * H, 0.42 * H);
+  standardRcs(b, 2.4 * H, -1.9 * H, 0.5 * H);
   const strobeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  mesh(b, new THREE.SphereGeometry(0.07 * H, 8, 8), strobeMat, 0, 0.6 * H, -2.5 * H);
-  navLight(b, 0, -0.5 * H, -1.0 * H, 0x7fd8ff, 0.06 * H);
-  return finish(b, wings, cannonTips, strobeMat, 9 * H, 4.6 * H);
+  mesh(b, new THREE.SphereGeometry(0.07 * H, 8, 8), strobeMat, 0, 0.76 * H, -1.3 * H);
+  return finish(b, wings, cannonTips, strobeMat, 8 * H, 4.2 * H);
 }
 
 /**

@@ -57,6 +57,8 @@ import { makeSunSurface } from '@/lib/solar-system/sun-surface';
 import { makePostFx } from '@/lib/solar-system/post-processing';
 import {
   createPlayerShip,
+  FLIGHT_FAR,
+  FLIGHT_NEAR,
   MARKER_MAX,
   type FlightAnchor,
   type FlightBody,
@@ -167,8 +169,10 @@ const SURFACE_G: Record<SolarBodyId, number> = {
   sun: 274, mercury: 3.7, venus: 8.87, earth: 9.81, mars: 3.71,
   jupiter: 24.79, saturn: 10.44, uranus: 8.87, neptune: 11.15, pluto: 0.62,
 };
+/** Earth's air stops short of 1.14 radii on purpose: that is where the
+ *  station orbits, and a ship coming alongside it must not be burning. */
 const ATMOSPHERE: Record<SolarBodyId, number> = {
-  sun: 1.5, mercury: 1, venus: 1.3, earth: 1.25, mars: 1.15,
+  sun: 1.5, mercury: 1, venus: 1.3, earth: 1.1, mars: 1.15,
   jupiter: 1.22, saturn: 1.22, uranus: 1.2, neptune: 1.2, pluto: 1,
 };
 
@@ -273,11 +277,13 @@ export function SolarSystemCanvas({
     // Far plane reaches past the cosmic-web shell (112k units out) plus the
     // widest camera radius, so the large-scale structure stays in view at
     // maximum zoom-out instead of being clipped away.
+    const ORBIT_NEAR = 0.02;
+    const ORBIT_FAR = 140000;
     const camera = new THREE.PerspectiveCamera(
       42,
       mount.clientWidth / mount.clientHeight,
-      0.02,
-      140000,
+      ORBIT_NEAR,
+      ORBIT_FAR,
     );
 
     // Furthest the camera pulls back. Everything past the Milky Way is laid
@@ -610,9 +616,9 @@ export function SolarSystemCanvas({
     // tilted (Uranus ~59°, Neptune ~47°) — rendered slightly tamed so the
     // ovals stay readable.
     const AURORA_BY_ID: Partial<Record<SolarBodyId, Parameters<typeof makeAurora>[1]>> = {
-      earth: { color: 0x3dff8a, topColor: 0xff5a6a, latitudeDeg: 68, magneticTiltDeg: 11, intensity: 0.5 },
-      jupiter: { color: 0x6a8cff, topColor: 0xb08cff, latitudeDeg: 76, magneticTiltDeg: 10, intensity: 0.5 },
-      saturn: { color: 0x7aa0ff, topColor: 0x9fc0ff, latitudeDeg: 78, magneticTiltDeg: 0, intensity: 0.4 },
+      earth: { color: 0x3dff8a, topColor: 0xff5a6a, latitudeDeg: 68, magneticTiltDeg: 11, intensity: 0.34 },
+      jupiter: { color: 0x6a8cff, topColor: 0xb08cff, latitudeDeg: 76, magneticTiltDeg: 10, intensity: 0.2 },
+      saturn: { color: 0x7aa0ff, topColor: 0x9fc0ff, latitudeDeg: 78, magneticTiltDeg: 0, intensity: 0.16 },
       uranus: { color: 0x9fd8e8, topColor: 0xc0ecf4, latitudeDeg: 62, magneticTiltDeg: 45, intensity: 0.26 },
       neptune: { color: 0x8fb4ff, topColor: 0xb4ccff, latitudeDeg: 65, magneticTiltDeg: 40, intensity: 0.2 },
     };
@@ -1027,10 +1033,12 @@ export function SolarSystemCanvas({
       ship = null;
       delete window.__stellarFlight;
       alphaCen.group.visible = false;
-      // The follow camera rolls its up vector and widens the lens; the
-      // orbit camera needs both back.
+      // The follow camera rolls its up vector, widens the lens and pulls the
+      // clipping planes in around the ship; the orbit camera needs them back.
       camera.up.set(0, 1, 0);
       camera.fov = 42;
+      camera.near = ORBIT_NEAR;
+      camera.far = ORBIT_FAR;
       camera.updateProjectionMatrix();
       renderer.toneMappingExposure = 1.18;
     };
@@ -1082,6 +1090,8 @@ export function SolarSystemCanvas({
       meshById.forEach((mesh, id) => {
         const b = bodyFor(id, id === 'sun' ? 'star' : 'planet', worldRadiusForBody(id), MEAN_RADIUS_KM[id], SURFACE_G[id], ATMOSPHERE[id]);
         b.position.copy(mesh.position);
+        // A world taken apart under a standing order stays gone.
+        if (b.destroyed) mesh.visible = false;
         world.bodies.push(b);
       });
       // The Moon, every planet's moons, the belt's dwarf planets, the station.
@@ -1227,6 +1237,12 @@ export function SolarSystemCanvas({
           scene.add(ship.boltGroup);
           scene.add(ship.fxGroup);
           alphaCen.group.visible = true;
+          // A ship is a fraction of a planet's radius across and the camera
+          // rides just behind it, so the near plane comes in. Nothing beyond
+          // the star shell is drawn in flight, so the far plane comes in too.
+          camera.near = FLIGHT_NEAR;
+          camera.far = FLIGHT_FAR;
+          camera.updateProjectionMatrix();
           syncWorld(null, earthPos, now);
           ship.spawn(world.home);
           const live = ship;

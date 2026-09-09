@@ -38,6 +38,8 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
   const geoms: THREE.BufferGeometry[] = [];
   const textures: THREE.CanvasTexture[] = [];
   const bodies: FlightBody[] = [];
+  /** Mesh ↔ body, so a world destroyed under a standing order stays gone. */
+  const shells: { mesh: THREE.Mesh; body: FlightBody }[] = [];
 
   const addBody = (
     id: string, local: THREE.Vector3, radiusKm: number, surfaceG: number, atmosphere: number,
@@ -75,6 +77,7 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
       atmosphere,
     };
     bodies.push(body);
+    shells.push({ mesh, body });
     return { mesh, body };
   };
 
@@ -87,23 +90,23 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
   group.add(lightA);
 
   // Alpha Centauri B — K1V, 0.86 R☉, orange. The pair's 23 AU mean
-  // separation is compressed the way the planets' orbits are.
+  // separation is compressed the way the planets' orbits are, but kept wide
+  // enough that B's own habitable zone has room in it.
   const matB = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.0, 1.15, 0.5) });
   owned.push(matB);
-  const bLocal = new THREE.Vector3(1.15, 0.06, 0.42);
+  const bLocal = new THREE.Vector3(2.6, 0.12, 0.95);
   addBody('alphaCenB', bLocal, 0.86 * R_SUN_KM, 274, 1.5, matB, {
-    // The halo stays inside a few stellar radii — Centauri Prime orbits
-    // half a scene unit out and a wide glow would swallow it.
     color: new THREE.Color(1.0, 0.62, 0.3), scale: 2.6,
   });
-  const lightB = new THREE.PointLight(0xffc890, 4.0, 3.5, 1.1);
+  const lightB = new THREE.PointLight(0xffc890, 4.6, 5, 1.1);
   lightB.position.copy(bLocal);
   group.add(lightB);
 
-  // Centauri Prime — a fictional inhabited ocean world in B's habitable
-  // zone: continents, ice caps, a cloud deck, a blue limb, and cities that
-  // light the night side. Two satellites and three freighters keep it
-  // company, and it hails ships that come close.
+  // Centauri Prime — a fictional inhabited ocean world well out in B's
+  // habitable zone: continents, ice caps, a cloud deck, a blue limb, and
+  // cities that light the night side. A ring habitat, three satellites and
+  // five freighters work the space around it, and its harbour hails — and
+  // resupplies — ships that come close.
   const lw = livingWorldTextures(97);
   const matLife = new THREE.MeshStandardMaterial({
     map: lw.day, roughness: 0.62, metalness: 0.02,
@@ -112,7 +115,7 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
   const matClouds = new THREE.MeshStandardMaterial({ map: lw.clouds, transparent: true, depthWrite: false, roughness: 1, metalness: 0 });
   owned.push(matLife, matClouds);
   textures.push(lw.day, lw.night, lw.clouds);
-  const LIFE_ORBIT = 0.5;
+  const LIFE_ORBIT = 1.35;
   const lifeLocal = bLocal.clone().add(new THREE.Vector3(LIFE_ORBIT, -0.03, 0));
   const life = addBody('centauriPrime', lifeLocal, 1.15 * R_EARTH_KM, 9.9, 1.25, matLife, null, 'planet');
   life.body.hails = true;
@@ -131,7 +134,7 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
   owned.push(satMat, panelMat);
   const sr = life.body.radius;
   const sats: { g: THREE.Group; r: number; rate: number; incl: number; phase: number }[] = [];
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 3; i++) {
     const g = new THREE.Group();
     const bus = new THREE.Mesh(new THREE.BoxGeometry(sr * 0.05, sr * 0.05, sr * 0.08), satMat);
     geoms.push(bus.geometry);
@@ -155,7 +158,7 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
   owned.push(hullMat, podMat, engMat, lampMat);
   const freighters: { g: THREE.Group; r: number; rate: number; y: number; phase: number }[] = [];
   const fl = sr * 0.5;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     const g = new THREE.Group();
     const add = (geom: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, rx = 0) => {
       geoms.push(geom);
@@ -175,9 +178,36 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
     add(new THREE.SphereGeometry(fl * 0.012, 6, 6), lampMat, 0, fl * 0.07, fl * 0.5);
     add(new THREE.SphereGeometry(fl * 0.012, 6, 6), lampMat, 0, -fl * 0.07, -fl * 0.4);
     group.add(g);
-    freighters.push({ g, r: sr * (3.2 + i * 1.1), rate: 0.09 - i * 0.02, y: (i - 1) * sr * 0.4, phase: i * 2.0 });
+    freighters.push({ g, r: sr * (3.2 + i * 1.1), rate: 0.09 - i * 0.013, y: (i - 2) * sr * 0.4, phase: i * 1.3 });
   }
   let lampClock = 0;
+
+  // Kaelith Harbour — the ring habitat the planet's control speaks from:
+  // a spun torus on a spoked hub, running lights around the rim.
+  const harbour = new THREE.Group();
+  const ringHubGeom = new THREE.TorusGeometry(sr * 0.42, sr * 0.05, 12, 48);
+  geoms.push(ringHubGeom);
+  harbour.add(new THREE.Mesh(ringHubGeom, hullMat));
+  for (let i = 0; i < 4; i++) {
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(sr * 0.42, sr * 0.03, sr * 0.03), hullMat);
+    geoms.push(spoke.geometry);
+    spoke.position.set(Math.cos(i * 1.57) * sr * 0.21, Math.sin(i * 1.57) * sr * 0.21, 0);
+    spoke.rotation.z = i * 1.57;
+    harbour.add(spoke);
+  }
+  const hubGeom = new THREE.CylinderGeometry(sr * 0.09, sr * 0.09, sr * 0.22, 12);
+  geoms.push(hubGeom);
+  const hub = new THREE.Mesh(hubGeom, satMat);
+  hub.rotation.x = Math.PI / 2;
+  harbour.add(hub);
+  for (let i = 0; i < 8; i++) {
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(sr * 0.014, 6, 6), lampMat);
+    geoms.push(lamp.geometry);
+    lamp.position.set(Math.cos(i * 0.785) * sr * 0.42, Math.sin(i * 0.785) * sr * 0.42, 0);
+    harbour.add(lamp);
+  }
+  group.add(harbour);
+  const HARBOUR_ORBIT = sr * 2.4;
 
   // Proxima Centauri — M5.5V red dwarf, 0.154 R☉, well out from the pair.
   const matP = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.9, 0.5, 0.28) });
@@ -224,7 +254,7 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
 
   // Drop out of hyperspace twelve radii short of A on the side away from B,
   // nose on the star, so the pair reads as A in front and B beyond it.
-  const awayFromB = new THREE.Vector3(1.15, 0.06, 0.42).normalize().negate();
+  const awayFromB = bLocal.clone().normalize().negate();
   const arrival: FlightAnchor = {
     position: center.clone().addScaledVector(awayFromB, a.body.radius * 12).add(new THREE.Vector3(0, a.body.radius * 2, 0)),
     lookAt: center.clone(),
@@ -237,6 +267,7 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
     bodies,
     arrival,
     update(dtSec, cameraPos, camera) {
+      for (const sh of shells) sh.mesh.visible = !sh.body.destroyed;
       coronaA.update(cameraPos, center, dtSec, camera);
       // The corona group is a child here, so undo the world position it sets.
       coronaA.group.position.set(0, 0, 0);
@@ -261,6 +292,14 @@ export function makeAlphaCentauri(sunMaterial: THREE.Material, lite: boolean): S
         );
         sat.g.lookAt(life.mesh.position.x, life.mesh.position.y, life.mesh.position.z);
       }
+      const ha = lampClock * 0.16;
+      harbour.position.set(
+        life.mesh.position.x + Math.cos(ha) * HARBOUR_ORBIT,
+        life.mesh.position.y + sr * 0.5,
+        life.mesh.position.z + Math.sin(ha) * HARBOUR_ORBIT,
+      );
+      harbour.rotation.z += dtSec * 0.35;
+      harbour.lookAt(life.mesh.position);
       lampClock += dtSec;
       lampMat.color.setRGB(2.4, 2.0, 1.2).multiplyScalar(0.75 + 0.25 * Math.sin(lampClock * 2.2));
       for (const f of freighters) {

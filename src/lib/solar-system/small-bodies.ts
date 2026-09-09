@@ -235,6 +235,7 @@ export function makeSmallBodies(lite: boolean): SmallBodiesHandle {
         const z = Math.sin(theta) * rr;
         mesh.position.set(x, -z * Math.sin(inc), z * Math.cos(inc));
         mesh.rotation.y = theta * 40;
+        mesh.visible = !body.destroyed;
         body.position.copy(mesh.position);
       }
     },
