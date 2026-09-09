@@ -1,13 +1,16 @@
 'use client';
 
 import { useCallback } from 'react';
+import { useLocale } from 'next-intl';
 
 type Locale = 'en' | 'ka';
 
 export default function LanguageToggle() {
-  const currentLocale: Locale = typeof window !== 'undefined'
-    ? (document.documentElement.lang as Locale) || 'en'
-    : 'en';
+  // Reading document.documentElement.lang made this render 'en' on the server
+  // and 'ka' in the browser, which failed hydration on every Georgian page and
+  // took the whole tree down with it. useLocale() is the same value on both
+  // sides because the provider is given it.
+  const currentLocale = useLocale() as Locale;
 
   const handleToggle = useCallback(async () => {
     const newLocale: Locale = currentLocale === 'en' ? 'ka' : 'en';

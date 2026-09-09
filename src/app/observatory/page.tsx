@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import BackButton from '@/components/shared/BackButton';
@@ -22,17 +23,27 @@ export default async function ObservatoryPage() {
   const observable = nodes.filter((n) => n.readiness.state === 'online').length;
 
   return (
-    <PageContainer variant="wide" className="py-6 sm:py-10">
-      <BackButton />
+    <>
+      <section className="obs-hero">
+        <Image
+          src="/hero/hero-milkyway.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="obs-hero__img"
+        />
+        <PageContainer variant="wide" className="obs-hero__body">
+          <BackButton />
+          <h1 className="obs-h1 mt-6">{t('title')}</h1>
+          <p className="obs-lede">{t('lead')}</p>
+        </PageContainer>
+        <span className="obs-hero__credit">{t('heroCredit')}</span>
+      </section>
 
-      <header className="mt-4 max-w-2xl">
-        <h1 className="text-2xl font-medium sm:text-3xl" style={{ color: 'var(--text-primary)' }}>
-          {t('title')}
-        </h1>
-        <p className="mt-2 text-base" style={{ color: 'var(--text-secondary)' }}>
-          {t('lead')}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+      <PageContainer variant="wide" className="pb-16">
+        <nav className="mt-6">
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
           <Link href="/observatory/how-it-works" className="underline" style={{ color: 'var(--text-secondary)' }}>
             {t('proofLink')}
           </Link>
@@ -45,77 +56,47 @@ export default async function ObservatoryPage() {
           <Link href="/first-light" className="underline" style={{ color: 'var(--text-secondary)' }}>
             {t('firstLightLink')}
           </Link>
-        </div>
-      </header>
+          </div>
+        </nav>
 
-      <p className="mt-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
+      <p className="obs-label mt-8">
         {t('instrumentCount', { count: nodes.length })} · {t('observableNow', { count: observable })}
       </p>
 
       {nodes.length === 0 ? (
-        <p
-          className="mt-6 rounded-xl border p-5 text-sm"
-          style={{
-            borderColor: 'var(--border)',
-            background: 'var(--surface)',
-            color: 'var(--text-secondary)',
-          }}
-        >
+        <p className="obs-panel mt-6 p-5 text-sm" style={{ color: 'var(--text-secondary)' }}>
           {t('empty')}
         </p>
       ) : (
-        <div className="mt-4 flex flex-col gap-4">
+        <div className="mt-3 flex flex-col gap-4">
           {nodes.map((node) => (
             <NodeCard key={node.id} node={node} />
           ))}
         </div>
       )}
 
-      <section
-        className="mt-6 rounded-xl border p-5"
-        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-      >
-        <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
-          {t('tryTitle')}
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm" style={{ color: 'var(--text-secondary)' }}>
-          {t('tryLead')}
-        </p>
-        <Link
-          href="/observatory/simulator"
-          className="mt-3 inline-block rounded-md border px-3 py-2 text-sm"
-          style={{
-            borderColor: 'var(--accent-border)',
-            background: 'var(--accent-dim)',
-            color: 'var(--accent-text)',
-          }}
-        >
-          {t('tryCta')}
-        </Link>
-      </section>
+      <div className="obs-section grid gap-4 md:grid-cols-2">
+        <section className="obs-panel flex flex-col p-5">
+          <h2 className="obs-h2">{t('tryTitle')}</h2>
+          <p className="mt-2 flex-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            {t('tryLead')}
+          </p>
+          <Link href="/observatory/simulator" className="obs-action obs-action--primary mt-4 self-start">
+            {t('tryCta')}
+          </Link>
+        </section>
 
-      <section
-        className="mt-4 rounded-xl border p-5"
-        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-      >
-        <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
-          {t('ownerTitle')}
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm" style={{ color: 'var(--text-secondary)' }}>
-          {t('ownerLead')}
-        </p>
-        <Link
-          href="/observatory/operator"
-          className="mt-3 inline-block rounded-md border px-3 py-2 text-sm"
-          style={{
-            borderColor: 'var(--accent-border)',
-            background: 'var(--accent-dim)',
-            color: 'var(--accent-text)',
-          }}
-        >
-          {t('ownerCta')}
-        </Link>
-      </section>
-    </PageContainer>
+        <section className="obs-panel flex flex-col p-5">
+          <h2 className="obs-h2">{t('ownerTitle')}</h2>
+          <p className="mt-2 flex-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            {t('ownerLead')}
+          </p>
+          <Link href="/observatory/operator" className="obs-action obs-action--primary mt-4 self-start">
+            {t('ownerCta')}
+          </Link>
+        </section>
+      </div>
+      </PageContainer>
+    </>
   );
 }

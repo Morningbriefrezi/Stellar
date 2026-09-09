@@ -10,7 +10,7 @@ import CompareControl from './CompareControl';
 import TimeControl from './TimeControl';
 import SessionClock from './SessionClock';
 import { acquisitionStateAt, planAcquisition, pointingAt, type Acquisition } from '@/lib/observatory/mission';
-import { evaluateSafety, type AltAz, type SafetyVerdict } from '@/lib/observatory/safety';
+import { LIMITS, evaluateSafety, type AltAz, type SafetyVerdict } from '@/lib/observatory/safety';
 import {
   DEFAULT_SEEING_ARCSEC,
   ROIS,
@@ -36,7 +36,7 @@ import { effectiveBlurArcsec } from '@/lib/observatory/render';
 import { MotorAudio } from '@/lib/observatory/motor-audio';
 import { hourAngle, localSiderealHours } from '@/lib/observatory/site-time';
 import EventsPanel from './EventsPanel';
-import { getTonightDarkWindow } from '@/lib/dark-window';
+import { getSunAltitude, getTonightDarkWindow } from '@/lib/dark-window';
 import type { ObservatoryNode } from '@/lib/observatory/types';
 
 /**
@@ -60,6 +60,24 @@ const RECOMMENDED_SETUP: Record<string, { train: string; roi: string; exposureSe
 
 /** Where the mount sits when it is not working. */
 const PARKED: AltAz = { altitude: 0, azimuth: 0 };
+
+/**
+ * The middle of the next dark window that has not happened yet.
+ *
+ * getTonightDarkWindow anchors at noon *yesterday* whenever it is asked before
+ * midday, which is the right answer for "was last night dark" and the wrong one
+ * here: at 11:00 it returns a midpoint around 01:00 this morning, already in the
+ * past, and jumping to it moves the clock nowhere. Asking again from twelve
+ * hours ahead moves the anchor to today's noon and yields tonight instead.
+ */
+function nextDarkMidpoint(lat: number, lon: number, from: Date): Date | null {
+  for (const hoursAhead of [0, 12, 24]) {
+    const reference = new Date(from.getTime() + hoursAhead * 3_600_000);
+    const midpoint = getTonightDarkWindow(lat, lon, reference).midpoint;
+    if (midpoint && midpoint.getTime() > from.getTime()) return midpoint;
+  }
+  return null;
+}
 const SEEING_ARCSEC = DEFAULT_SEEING_ARCSEC;
 const TICK_MS = 250;
 
@@ -95,9 +113,24 @@ export default function SessionConsole({
   if (audioRef.current === null && typeof window !== 'undefined') audioRef.current = new MotorAudio();
 
   useEffect(() => {
-    setClock(Date.now());
+    const real = Date.now();
+    setClock(real);
+
+    // Opening the console in daylight refuses all eight targets for the same
+    // reason, which teaches a visitor nothing and reads as a broken page. The
+    // simulator is the one thing here anyone can touch without an account, so
+    // it starts in tonight's dark window whenever the Sun is up. A booked
+    // session never moves: the instrument is somebody else's for those twenty
+    // minutes and the clock is the real one.
+    if (!session && getSunAltitude(node.lat, node.lon, new Date(real)) > LIMITS.sunAltitudeCeilingDeg) {
+      const midpoint = nextDarkMidpoint(node.lat, node.lon, new Date(real));
+      if (midpoint) setOffsetMs(midpoint.getTime() - real);
+    }
+
     const id = setInterval(() => setClock(Date.now()), TICK_MS);
     return () => clearInterval(id);
+    // Mount only: this picks a starting clock, it does not track the Sun.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const date = useMemo(() => new Date(now), [now]);
@@ -244,11 +277,10 @@ export default function SessionConsole({
 
   const jumpToNight = useCallback(() => {
     const real = Date.now();
-    const window = getTonightDarkWindow(node.lat, node.lon, new Date(real));
-    const midpoint = window.midpoint ?? window.duskStart;
+    const midpoint = nextDarkMidpoint(node.lat, node.lon, new Date(real));
     if (!midpoint) return;
 
-    const nextOffset = Math.max(0, midpoint.getTime() - real);
+    const nextOffset = midpoint.getTime() - real;
     setOffsetMs(nextOffset);
     nowRef.current = real + nextOffset;
     setAcquisition(null);

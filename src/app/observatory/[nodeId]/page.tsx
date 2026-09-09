@@ -28,6 +28,7 @@ export default async function NodePage({ params }: Params) {
   const node = getNode((await params).nodeId);
   if (!node) notFound();
 
+  const t = await getTranslations('observatory.node');
   const tReady = await getTranslations('observatory.readiness');
   // adapterFor, not a fresh simulator: a node wired to real hardware must not
   // have its readiness answered by the simulator standing in for it.
@@ -39,13 +40,15 @@ export default async function NodePage({ params }: Params) {
     <PageContainer variant="wide" className="py-6 sm:py-10">
       <BackButton />
 
-      <header className="mt-4 flex flex-wrap items-start justify-between gap-3">
+      <header className="mt-8 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-medium sm:text-3xl" style={{ color: 'var(--text-primary)' }}>
-            {node.name}
-          </h1>
+          <h1 className="obs-h1">{node.name}</h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {node.site} · Bortle {node.bortle} · {node.timezone.replace('_', ' ')}
+            {t('header', {
+              site: node.site,
+              bortle: node.bortle,
+              timezone: node.timezone.replace('_', ' '),
+            })}
           </p>
         </div>
         <ReadinessBadge readiness={readiness} />
@@ -57,46 +60,54 @@ export default async function NodePage({ params }: Params) {
         </p>
       )}
 
-      <section
-        className="mt-6 rounded-xl border p-5"
-        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-      >
-        <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
-          The instrument
-        </h2>
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-          <Spec label="Optics" value={instrument.optics} />
-          <Spec label="Camera" value={instrument.camera} />
-          <Spec label="Aperture" value={`${instrument.apertureMm} mm`} mono />
-          <Spec label="Focal ratio" value={`f/${focalRatio(instrument).toFixed(0)}`} mono />
+      <section className="obs-panel obs-section">
+        <div className="obs-panel__bar">
+          <h2 className="obs-panel__title" style={{ color: 'var(--text-primary)' }}>
+            {t('instrumentTitle')}
+          </h2>
+          <span className="obs-panel__title">{node.instrument.optics}</span>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 p-4 sm:grid-cols-4">
+          <Spec label={t('optics')} value={instrument.optics} />
+          <Spec label={t('camera')} value={instrument.camera} />
+          <Spec label={t('aperture')} value={`${instrument.apertureMm} mm`} mono />
+          <Spec label={t('focalRatio')} value={`f/${focalRatio(instrument).toFixed(0)}`} mono />
           <Spec
-            label="Field of view"
+            label={t('fieldOfView')}
             value={`${fov.widthArcmin.toFixed(1)}′ × ${fov.heightArcmin.toFixed(1)}′`}
             mono
           />
-          <Spec label="Plate scale" value={`${fov.plateScaleArcsecPx.toFixed(2)}″/px`} mono />
-          <Spec label="Resolves to" value={`${resolvingPowerArcsec(instrument).toFixed(2)}″`} mono />
-          <Spec label="Mount" value={instrument.mount} />
+          <Spec label={t('plateScale')} value={`${fov.plateScaleArcsecPx.toFixed(2)}″/px`} mono />
+          <Spec
+            label={t('resolvesTo')}
+            value={`${resolvingPowerArcsec(instrument).toFixed(2)}″`}
+            mono
+          />
+          <Spec label={t('mount')} value={instrument.mount} />
         </dl>
-        <p className="mt-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Best for {instrument.suitedTo.join(' · ')}. The full Moon does not fit this field;
-          planets sit inside a few percent of it.
+        <p
+          className="border-t px-4 py-3 text-sm"
+          style={{ borderColor: 'var(--obs-rule)', color: 'var(--text-secondary)' }}
+        >
+          {t('bestForLong', {
+            targets: instrument.suitedTo.map((k) => t(`target${k}`)).join(' · '),
+          })}
         </p>
       </section>
 
-      <section className="mt-6">
-        <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
-          Hold a slot
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Only the hours when the sky is dark over {node.site} and the operator is taking work
-          are shown.{' '}
-          {node.status !== 'active' && (
-            <>
-              {node.name} is still being commissioned, so a held slot is a place in the queue
-              rather than a confirmed session — you will be told before anything is charged.
-            </>
-          )}
+      <section className="obs-panel mt-4">
+        <div className="obs-panel__bar">
+          <h2 className="obs-panel__title" style={{ color: 'var(--text-primary)' }}>
+            {t('holdTitle')}
+          </h2>
+          <span className="obs-panel__title">
+            {t('price', { price: node.priceGel, minutes: node.sessionMinutes })}
+          </span>
+        </div>
+        <div className="p-4">
+        <p className="max-w-2xl text-sm" style={{ color: 'var(--text-secondary)' }}>
+          {t('holdIntro', { site: node.site })}{' '}
+          {node.status !== 'active' && t('commissioning', { name: node.name })}
         </p>
 
         <SlotPicker
@@ -105,57 +116,36 @@ export default async function NodePage({ params }: Params) {
           sessionMinutes={node.sessionMinutes}
           priceGel={node.priceGel}
         />
+        </div>
       </section>
 
-      <section
-        className="mt-8 rounded-xl border p-5"
-        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-      >
-        <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
-          See what it would show you
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm" style={{ color: 'var(--text-secondary)' }}>
-          The simulator drives this same optical train — the field of view above, the real
-          slew times, and the same safety envelope that will refuse a target too low or too
-          close to the Sun.
-        </p>
-        <Link
-          href="/observatory/simulator"
-          className="mt-3 inline-block rounded-md border px-3 py-2 text-sm"
-          style={{
-            borderColor: 'var(--accent-border)',
-            background: 'var(--accent-dim)',
-            color: 'var(--accent-text)',
-          }}
-        >
-          Open the simulator
-        </Link>
-      </section>
+      {/* The two ways to use the instrument without holding a slot, side by
+          side: stacked full-width they left a column of empty page beside them. */}
+      <div className="obs-section grid gap-4 md:grid-cols-2">
+        <section className="obs-panel flex flex-col p-4">
+          <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
+            {t('simTitle')}
+          </h2>
+          <p className="mt-2 flex-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            {t('simBody')}
+          </p>
+          <Link href="/observatory/simulator" className="obs-action obs-action--primary mt-4 self-start">
+            {t('simCta')}
+          </Link>
+        </section>
 
-      <section
-        className="mt-4 rounded-xl border p-5"
-        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-      >
-        <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
-          Not awake at three in the morning?
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Ask for the object instead of the hour. Name what you want photographed and how
-          long you will wait, and the instrument works your request on the first night the
-          sky allows it — between the sessions people booked to drive themselves.
-        </p>
-        <Link
-          href="/observatory/requests"
-          className="mt-3 inline-block rounded-md border px-3 py-2 text-sm"
-          style={{
-            borderColor: 'var(--accent-border)',
-            background: 'var(--accent-dim)',
-            color: 'var(--accent-text)',
-          }}
-        >
-          Ask for a photograph
-        </Link>
-      </section>
+        <section className="obs-panel flex flex-col p-4">
+          <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
+            {t('requestTitle')}
+          </h2>
+          <p className="mt-2 flex-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            {t('requestBody')}
+          </p>
+          <Link href="/observatory/requests" className="obs-action obs-action--primary mt-4 self-start">
+            {t('requestCta')}
+          </Link>
+        </section>
+      </div>
     </PageContainer>
   );
 }

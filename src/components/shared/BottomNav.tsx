@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CloudSun, Satellite, Home, ShoppingBag, LayoutGrid } from 'lucide-react';
+import { CloudSun, Satellite, Home, Telescope, ShoppingBag, LayoutGrid } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 type Tab = { href: string; labelKey: string; icon: LucideIcon };
@@ -14,6 +14,7 @@ const TABS: Tab[] = [
   { href: '/sky',         labelKey: 'sky',         icon: CloudSun },
   { href: '/missions',    labelKey: 'missions',    icon: Satellite },
   { href: '/',            labelKey: 'home',        icon: Home },
+  { href: '/observatory', labelKey: 'observatory', icon: Telescope },
   { href: '/marketplace', labelKey: 'marketplace', icon: ShoppingBag },
   { href: '/hub',         labelKey: 'hub',         icon: LayoutGrid },
 ];
@@ -90,7 +91,11 @@ export default function BottomNav() {
               <span
                 style={{
                   fontFamily: 'var(--font-display)',
-                  fontSize: 10.5,
+                  fontSize: 9.5,
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                   fontWeight: isActive ? 600 : 400,
                   color: isActive ? 'var(--stl-text-bright)' : 'var(--text-primary)',
                   letterSpacing: '0.01em',

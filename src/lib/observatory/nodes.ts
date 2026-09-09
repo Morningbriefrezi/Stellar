@@ -34,7 +34,7 @@ export const NODES: ObservatoryNode[] = [
       sensorWidthMm: 11.18,
       sensorHeightMm: 6.32,
       pixelSizeUm: 2.9,
-      suitedTo: ['Moon', 'Planets', 'Bright deep sky'],
+      suitedTo: ['Moon', 'Planets', 'BrightDeepSky'],
     },
     priceGel: 40,
     sessionMinutes: 20,

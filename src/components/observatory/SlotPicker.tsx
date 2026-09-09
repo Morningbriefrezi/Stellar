@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useLocale, useTranslations } from 'next-intl';
 import { usePrivy } from '@privy-io/react-auth';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { useStellarUser } from '@/hooks/useStellarUser';
@@ -26,8 +27,8 @@ function siteClock(iso: string, timezone: string) {
   }).format(new Date(iso));
 }
 
-function nightLabel(night: string, timezone: string) {
-  return new Intl.DateTimeFormat('en-GB', {
+function nightLabel(night: string, timezone: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: timezone,
     weekday: 'long',
     day: 'numeric',
@@ -44,6 +45,8 @@ function localClock(iso: string) {
 }
 
 export default function SlotPicker({ nodeId, timezone, sessionMinutes, priceGel }: Props) {
+  const t = useTranslations('observatory.slots');
+  const locale = useLocale();
   const { getAccessToken } = usePrivy();
   const { authenticated } = useStellarUser();
 
@@ -66,9 +69,9 @@ export default function SlotPicker({ nodeId, timezone, sessionMinutes, priceGel 
       setHoldsKnown(data.holdsKnown !== false);
     } catch {
       setSlots([]);
-      setError('The timetable could not be loaded. Try again in a moment.');
+      setError(t('loadFailed'));
     }
-  }, [authenticated, getAccessToken, nodeId]);
+  }, [authenticated, getAccessToken, nodeId, t]);
 
   useEffect(() => {
     void load();
@@ -97,43 +100,64 @@ export default function SlotPicker({ nodeId, timezone, sessionMinutes, priceGel 
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? 'That did not work. Try again.');
+        setError(data.error ?? t('actionFailed'));
       }
       await load();
     } catch {
-      setError('Network error — try again.');
+      setError(t('networkError'));
     } finally {
       setPending(null);
     }
   };
 
+  // A bare sentence here reads as "there are no slots". A grid the shape of
+  // the real one reads as "they are coming".
   if (slots === null) {
     return (
-      <p className="mt-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
-        Working out when the sky is dark over the site…
-      </p>
+      <div className="mt-4">
+        <p className="obs-label">{t('loading')}</p>
+        <div className="obs-slots mt-3" aria-hidden="true">
+          {Array.from({ length: 11 }, (_, i) => (
+            <span key={i} className="obs-slot obs-slot--ghost" />
+          ))}
+        </div>
+      </div>
     );
   }
 
   const nights = [...new Set(slots.map((s) => s.night))];
+  const cloudByNight = new Map(
+    nights.map((night) => {
+      const read = slots
+        .filter((s) => s.night === night && s.cloudCover !== null)
+        .map((s) => s.cloudCover as number);
+      return [night, read.length ? read.reduce((a, b) => a + b, 0) / read.length : null];
+    }),
+  );
+  // Four nights of identical tiles hide the only thing worth knowing: which
+  // one to pick. The clearest gets named; the rest keep their numbers.
+  const rated = [...cloudByNight].filter(([, c]) => c !== null) as [string, number][];
+  const clearestNight = rated.length > 1
+    ? rated.reduce((best, cur) => (cur[1] < best[1] ? cur : best))[0]
+    : null;
 
   return (
     <div className="mt-4">
       <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-        <span className="font-mono" style={{ color: 'var(--text-primary)' }}>
-          {sessionMinutes}
-        </span>{' '}
-        minutes on the instrument ·{' '}
-        <span style={{ color: 'var(--text-primary)' }}>
-          <span className="font-mono">{priceGel}</span> ₾
-        </span>{' '}
-        when sessions open. Holding a slot costs nothing today — no card, no payment.
+        {t.rich('terms', {
+          minutes: sessionMinutes,
+          price: priceGel,
+          n: (chunks) => (
+            <span className="font-mono" style={{ color: 'var(--text-primary)' }}>
+              {chunks}
+            </span>
+          ),
+        })}
       </p>
 
       {!holdsKnown && (
         <p className="mt-3 text-sm" style={{ color: 'var(--text-muted)' }}>
-          Bookings are offline, so which slots are already taken is unknown. The nights below
-          are still the real ones.
+          {t('holdsOffline')}
         </p>
       )}
 
@@ -152,20 +176,26 @@ export default function SlotPicker({ nodeId, timezone, sessionMinutes, priceGel 
             color: 'var(--text-secondary)',
           }}
         >
-          No slots in the next few nights — the operator&apos;s hours and the dark window do not
-          overlap yet. Check back tomorrow.
+          {t('empty')}
         </p>
       ) : (
         <div className="mt-5 flex flex-col gap-6">
           {nights.map((night) => (
             <section key={night}>
-              <h3
-                className="text-xs uppercase tracking-wide"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                {nightLabel(night, timezone)} · site time
+              <h3 className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="obs-label">
+                  {t('nightHeading', { night: nightLabel(night, timezone, locale) })}
+                </span>
+                {cloudByNight.get(night) !== null && (
+                  <span className="obs-label" style={{ color: 'var(--text-secondary)' }}>
+                    {t('avgCloud', { percent: Math.round(cloudByNight.get(night) as number) })}
+                  </span>
+                )}
+                {night === clearestNight && (
+                  <span className="obs-slot__flag">{t('clearest')}</span>
+                )}
               </h3>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="obs-slots mt-3">
                 {slots
                   .filter((s) => s.night === night)
                   .map((slot) => (
@@ -199,22 +229,36 @@ function SlotTile({
   busy: boolean;
   onSelect: () => void;
 }) {
+  const t = useTranslations('observatory.slots');
   const taken = slot.taken && !slot.mine;
   const clouded = slot.cloudCover !== null && slot.cloudCover > 70;
 
-  const tone = slot.mine
-    ? { fg: 'var(--yes)', bg: 'var(--yes-dim)', bd: 'var(--yes-border)' }
-    : { fg: taken ? 'var(--text-muted)' : 'var(--text-primary)', bg: 'var(--surface)', bd: 'var(--border)' };
+  const shell = [
+    'obs-slot',
+    slot.mine && 'obs-slot--mine',
+    taken && 'obs-slot--taken',
+    clouded && !taken && !slot.mine && 'obs-slot--clouded',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const clock = <span className="obs-slot__clock">{siteClock(slot.startsAt, timezone)}</span>;
 
-  const shell = 'flex flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left';
-  const clock = <span className="font-mono text-sm">{siteClock(slot.startsAt, timezone)}</span>;
+  // The cloud figure is the only thing separating one slot from the next, so
+  // it gets a length as well as a number — a row of bars is scannable in a way
+  // that a row of percentages is not.
+  const cloudBar =
+    slot.cloudCover === null ? null : (
+      <span className="obs-slot__bar" aria-hidden="true">
+        <span style={{ width: `${Math.min(100, Math.round(slot.cloudCover))}%` }} />
+      </span>
+    );
 
   // A held slot carries two actions, so it cannot be one button — nesting a
   // control inside a control is invalid, and the whole tile is no longer a
   // single choice.
   if (slot.mine) {
     return (
-      <div className={shell} style={{ color: tone.fg, background: tone.bg, borderColor: tone.bd }}>
+      <div className={shell}>
         {clock}
         <span className="flex items-center gap-3 text-xs">
           <Link
@@ -222,7 +266,7 @@ function SlotTile({
             className="underline"
             style={{ color: 'var(--yes)' }}
           >
-            Open session
+            {t('openSession')}
           </Link>
           <button
             type="button"
@@ -232,7 +276,7 @@ function SlotTile({
             // The global 44px control floor would stretch this line into a pill.
             style={{ color: 'var(--text-muted)', minHeight: 0, padding: 0 }}
           >
-            {busy ? 'Releasing…' : 'Release'}
+            {busy ? t('releasing') : t('release')}
           </button>
         </span>
       </div>
@@ -245,24 +289,20 @@ function SlotTile({
       disabled={taken || busy}
       onClick={onSelect}
       title={localClock(slot.startsAt)}
-      className={`${shell} transition-colors disabled:cursor-not-allowed`}
-      style={{ color: tone.fg, background: tone.bg, borderColor: tone.bd }}
+      className={shell}
     >
       {clock}
-      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+      <span className="obs-slot__meta">
         {taken
-          ? 'Taken'
+          ? t('taken')
           : busy
-            ? 'Holding…'
+            ? t('holding')
             : slot.cloudCover === null
-              ? 'Free'
-              : `${Math.round(slot.cloudCover)}% cloud`}
+              ? t('free')
+              : t('cloud', { percent: Math.round(slot.cloudCover) })}
       </span>
-      {clouded && !taken && (
-        <span className="text-xs" style={{ color: 'var(--no)' }}>
-          Likely clouded
-        </span>
-      )}
+      {!taken && !busy && cloudBar}
+      {clouded && !taken && <span className="obs-slot__warn">{t('likelyClouded')}</span>}
     </button>
   );
 }

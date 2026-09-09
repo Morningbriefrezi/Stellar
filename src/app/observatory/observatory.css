@@ -202,3 +202,211 @@
   color: var(--text-muted);
   flex: none;
 }
+
+/* --- slot board ------------------------------------------------------- */
+
+/*
+ * A night's slots are a row of identical twenty-minute boxes, and the only
+ * thing separating them is the weather. So the tile is square like the rest of
+ * the console, the hour is the largest thing in it, and the cloud figure gets
+ * a bar under it — four nights of these read as a chart rather than a wall.
+ */
+.obs-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: 1px;
+  background: var(--obs-rule);
+  border: 1px solid var(--obs-rule);
+}
+
+.obs-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.5rem 0.55rem;
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  text-align: left;
+  background: var(--surface);
+  color: var(--text-primary);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.obs-slot:hover:not(:disabled) { background: var(--accent-dim); color: var(--accent-text); }
+.obs-slot:disabled { cursor: not-allowed; }
+
+.obs-slot__clock {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.obs-slot__meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.obs-slot__bar {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+.obs-slot__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--text-muted);
+}
+
+.obs-slot__warn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--no);
+}
+
+.obs-slot--taken { color: var(--text-muted); background: transparent; }
+.obs-slot--clouded .obs-slot__bar > span { background: var(--no); }
+.obs-slot--mine { background: var(--yes-dim); color: var(--yes); }
+
+.obs-slot--ghost {
+  min-height: 3.4rem;
+  background: var(--surface);
+  animation: obs-ghost 1.4s ease-in-out infinite;
+}
+@keyframes obs-ghost {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+/* The one night worth choosing, named rather than merely numbered. */
+.obs-slot__flag {
+  padding: 1px 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-dim);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* --- ground ----------------------------------------------------------- */
+
+/*
+ * A night-sky ground, darker than the app's --canvas so a photograph is the
+ * brightest thing on the page. Scoped to the observatory route by its layout;
+ * one declaration to lift into globals.css if it should go app-wide.
+ */
+.obs-ground {
+  --obs-canvas: #070E22;
+  background: var(--obs-canvas);
+  min-height: calc(100vh - 3.5rem);
+}
+
+:root[data-theme='light'] .obs-ground,
+:root:not([data-theme='dark']) .obs-ground {
+  --obs-canvas: var(--canvas);
+}
+:root[data-theme='dark'] .obs-ground { --obs-canvas: #070E22; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .obs-ground { --obs-canvas: #070E22; }
+}
+
+/* --- photographic hero -------------------------------------------------- */
+
+/*
+ * Full-bleed picture, type over the dark half of it. The photograph is the
+ * page's opening argument — this is an instrument that looks at the sky, and
+ * the sky should be the first thing on screen rather than a card.
+ */
+.obs-hero {
+  position: relative;
+  isolation: isolate;
+  min-height: 26rem;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  border-bottom: 1px solid var(--obs-rule);
+}
+
+.obs-hero__img {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 35%;
+}
+
+/* Legibility, and it seats the picture on the page's own ground. */
+.obs-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--obs-canvas) 55%, transparent) 0%,
+    color-mix(in srgb, var(--obs-canvas) 35%, transparent) 40%,
+    var(--obs-canvas) 100%
+  );
+}
+
+.obs-hero__body { padding-block: 3.5rem 2rem; }
+
+/* §4.3 — the heading carries the page, at a size the old 1.5rem never did. */
+.obs-h1 {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: clamp(2.5rem, 6vw, 4.25rem);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+.obs-lede {
+  margin-top: 1rem;
+  max-width: 34ch;
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* A picture we did not take says so, in the corner, in the instrument's voice. */
+.obs-hero__credit {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* --- rhythm ------------------------------------------------------------- */
+
+/* Sections breathe. The console packs data; the marketing surface does not. */
+.obs-section { margin-top: 4rem; }
+.obs-section:first-of-type { margin-top: 3rem; }
+
+.obs-h2 {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: clamp(1.375rem, 2vw, 1.75rem);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+  .obs-hero { min-height: 20rem; }
+  .obs-hero__body { padding-block: 2.5rem 2.75rem; }
+  .obs-section { margin-top: 2.75rem; }
+}

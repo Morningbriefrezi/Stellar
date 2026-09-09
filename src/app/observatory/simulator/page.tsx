@@ -4,7 +4,6 @@ import PageContainer from '@/components/layout/PageContainer';
 import SessionConsole from '@/components/observatory/SessionConsole';
 import { getNodesWithReadiness } from '@/lib/observatory/nodes';
 import { fieldOfView } from '@/lib/observatory/optics';
-import './../observatory.css';
 
 export const metadata: Metadata = {
   title: 'Telescope simulator — Stellar',

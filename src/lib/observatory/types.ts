@@ -40,9 +40,14 @@ export type Instrument = {
   sensorHeightMm: number;
   /** Pixel pitch in microns — sets the plate scale. */
   pixelSizeUm: number;
-  /** What this rig is actually good for, in plain words. */
-  suitedTo: string[];
+  /**
+   * What this rig is actually good for. Keys, not words — the words live under
+   * observatory.node.target* so they can be Georgian.
+   */
+  suitedTo: SuitedTo[];
 };
+
+export type SuitedTo = 'Moon' | 'Planets' | 'BrightDeepSky';
 
 export type ObservatoryNode = {
   id: string;

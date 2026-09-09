@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import BackButton from '@/components/shared/BackButton';
 import PageContainer from '@/components/layout/PageContainer';
 import CaptureCard from '@/components/observatory/CaptureCard';
 import { recentCaptures } from '@/lib/observatory/gallery';
-import '../observatory.css';
 
 export const metadata: Metadata = {
   title: 'Captures — Stellar Observatory',
@@ -16,27 +16,26 @@ export const metadata: Metadata = {
 export const revalidate = 120;
 
 export default async function CapturesPage() {
+  const t = await getTranslations('observatory.captures');
   const captures = await recentCaptures(24);
   const instrument = captures.filter((c) => c.provenance === 'instrument').length;
 
   return (
-    <PageContainer variant="wide" className="obs py-6 sm:py-10">
+    <PageContainer variant="wide" className="py-6 sm:py-10">
       <BackButton />
 
-      <header className="mt-4 max-w-2xl">
-        <h1 className="text-2xl font-medium sm:text-3xl" style={{ color: 'var(--text-primary)' }}>
-          Captures
-        </h1>
-        <p className="mt-2 text-base" style={{ color: 'var(--text-secondary)' }}>
-          Every frame the network has taken, with the instrument that took it and what it is
-          worth. Simulated frames are shown and labelled; they are never mixed in quietly.
-        </p>
+      <header className="mt-8 max-w-2xl">
+        {/* No photographic hero here on purpose: a NASA picture over "what the
+            network has photographed" would imply the very thing this page
+            exists to disprove. The frames arrive at first light. */}
+        <h1 className="obs-h1">{t('title')}</h1>
+        <p className="obs-lede max-w-2xl">{t('intro')}</p>
         <Link
           href="/observatory/how-it-works"
-          className="mt-3 inline-block text-sm underline"
+          className="mt-5 inline-block text-sm underline"
           style={{ color: 'var(--text-secondary)' }}
         >
-          How a capture is proved
+          {t('howLink')}
         </Link>
       </header>
 
@@ -45,14 +44,15 @@ export default async function CapturesPage() {
       ) : (
         <>
           <p className="mt-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            <span className="font-mono" style={{ color: 'var(--text-primary)' }}>
-              {captures.length}
-            </span>{' '}
-            {captures.length === 1 ? 'frame' : 'frames'} ·{' '}
-            <span className="font-mono" style={{ color: 'var(--text-primary)' }}>
-              {instrument}
-            </span>{' '}
-            from an instrument
+            {t.rich('count', {
+              count: captures.length,
+              instrument,
+              n: (chunks) => (
+                <span className="font-mono" style={{ color: 'var(--text-primary)' }}>
+                  {chunks}
+                </span>
+              ),
+            })}
           </p>
 
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -71,42 +71,27 @@ export default async function CapturesPage() {
  * about it. A gallery seeded with frames nobody asked for would be the July
  * mistake in a friendlier shape.
  */
-function EmptyGallery() {
+async function EmptyGallery() {
+  const t = await getTranslations('observatory.captures');
+
   return (
     <section
-      className="mt-6 border p-5"
+      className="obs-section border p-6"
       style={{ borderColor: 'var(--obs-rule)', background: 'var(--surface)' }}
     >
-      <h2 className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>
-        No frames yet
-      </h2>
+      <h2 className="obs-h2">{t('emptyTitle')}</h2>
       <p className="mt-2 max-w-2xl text-sm" style={{ color: 'var(--text-secondary)' }}>
-        Nothing has been captured through a booked session. The simulator keeps its frames in
-        your browser on purpose — a sandbox that filed its output would fill this page with
-        pictures no telescope took.
+        {t('emptyWhy')}
       </p>
       <p className="mt-2 max-w-2xl text-sm" style={{ color: 'var(--text-secondary)' }}>
-        The first node is under commissioning. From its first light, every frame appears here
-        with its instrument, its integration and its provenance.
+        {t('emptyNext')}
       </p>
       <div className="mt-4 flex flex-wrap gap-3">
-        <Link
-          href="/observatory"
-          className="inline-block rounded-md border px-3 py-2 text-sm"
-          style={{
-            borderColor: 'var(--accent-border)',
-            background: 'var(--accent-dim)',
-            color: 'var(--accent-text)',
-          }}
-        >
-          Book a session
+        <Link href="/observatory" className="obs-action obs-action--primary">
+          {t('book')}
         </Link>
-        <Link
-          href="/observatory/simulator"
-          className="inline-block rounded-md border px-3 py-2 text-sm"
-          style={{ borderColor: 'var(--obs-rule-strong)', color: 'var(--text-primary)' }}
-        >
-          Open the simulator
+        <Link href="/observatory/simulator" className="obs-action">
+          {t('simulator')}
         </Link>
       </div>
     </section>

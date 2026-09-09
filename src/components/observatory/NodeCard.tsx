@@ -25,10 +25,7 @@ export default function NodeCard({ node }: { node: NodeWithReadiness }) {
   const { instrument, readiness } = node;
 
   return (
-    <article
-      className="rounded-xl border p-5"
-      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-    >
+    <article className="obs-panel p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
@@ -62,7 +59,9 @@ export default function NodeCard({ node }: { node: NodeWithReadiness }) {
         style={{ borderColor: 'var(--border)' }}
       >
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          {t('bestFor', { targets: instrument.suitedTo.join(' · ') })}
+          {t('bestFor', {
+            targets: instrument.suitedTo.map((k) => t(`target${k}`)).join(' · '),
+          })}
         </p>
         <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
           {t('price', { price: node.priceGel, minutes: node.sessionMinutes })}
@@ -71,12 +70,7 @@ export default function NodeCard({ node }: { node: NodeWithReadiness }) {
 
       <Link
         href={`/observatory/${node.id}`}
-        className="mt-4 inline-block rounded-md border px-3 py-2 text-sm"
-        style={{
-          borderColor: 'var(--accent-border)',
-          background: 'var(--accent-dim)',
-          color: 'var(--accent-text)',
-        }}
+        className="obs-action obs-action--primary mt-4 inline-block"
       >
         {t('open')}
       </Link>

@@ -1,3 +1,4 @@
+import { getLocale, getTranslations } from 'next-intl/server';
 import CaptureFrame from './CaptureFrame';
 import type { GalleryCapture } from '@/lib/observatory/gallery';
 
@@ -9,17 +10,23 @@ import type { GalleryCapture } from '@/lib/observatory/gallery';
  * scope will not out-resolve Hubble, and the honest way to show its work is
  * as a record rather than as a mural.
  */
-export default function CaptureCard({ capture }: { capture: GalleryCapture }) {
+export default async function CaptureCard({ capture }: { capture: GalleryCapture }) {
+  const t = await getTranslations('observatory.captures');
+  const locale = await getLocale();
+
   return (
     <figure className="obs-panel m-0 flex flex-col">
       {capture.frame ? (
-        <CaptureFrame recipe={capture.frame} alt={`${capture.targetName} from ${capture.site}`} />
+        <CaptureFrame
+          recipe={capture.frame}
+          alt={t('alt', { target: capture.targetName, site: capture.site })}
+        />
       ) : (
         <div
           className="flex items-center justify-center"
           style={{ aspectRatio: '16 / 9', background: 'var(--canvas)' }}
         >
-          <span className="obs-label">no frame stored</span>
+          <span className="obs-label">{t('noFrame')}</span>
         </div>
       )}
 
@@ -28,16 +35,23 @@ export default function CaptureCard({ capture }: { capture: GalleryCapture }) {
           <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
             {capture.targetName}
           </span>
-          <ProvenanceTag provenance={capture.provenance} />
+          <ProvenanceTag
+            provenance={capture.provenance}
+            label={
+              capture.provenance === 'instrument'
+                ? t('provenanceInstrument')
+                : t('provenanceSimulated')
+            }
+          />
         </div>
 
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1">
-          <Row label="instrument" value={capture.instrument} />
-          <Row label="aperture" value={`${capture.apertureMm} mm`} />
-          <Row label="integration" value={integration(capture.integrationSec)} />
-          <Row label="subs" value={String(capture.subs)} />
-          <Row label="site" value={capture.site} />
-          <Row label="night" value={night(capture.capturedAt)} />
+          <Row label={t('instrument')} value={capture.instrument} />
+          <Row label={t('aperture')} value={`${capture.apertureMm} mm`} />
+          <Row label={t('integration')} value={integration(capture.integrationSec)} />
+          <Row label={t('subs')} value={String(capture.subs)} />
+          <Row label={t('site')} value={capture.site} />
+          <Row label={t('night')} value={night(capture.capturedAt, locale)} />
         </dl>
       </figcaption>
     </figure>
@@ -59,7 +73,13 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ProvenanceTag({ provenance }: { provenance: GalleryCapture['provenance'] }) {
+function ProvenanceTag({
+  provenance,
+  label,
+}: {
+  provenance: GalleryCapture['provenance'];
+  label: string;
+}) {
   const instrument = provenance === 'instrument';
   return (
     <span
@@ -69,7 +89,7 @@ function ProvenanceTag({ provenance }: { provenance: GalleryCapture['provenance'
         color: instrument ? 'var(--yes)' : 'var(--text-muted)',
       }}
     >
-      {instrument ? 'instrument' : 'simulated'}
+      {label}
     </span>
   );
 }
@@ -81,8 +101,8 @@ function integration(seconds: number): string {
   return `${(seconds / 60).toFixed(1)} min`;
 }
 
-function night(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
+function night(iso: string, locale: string): string {
+  return new Date(iso).toLocaleDateString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
